@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Package, CreditCard, Clock, LogOut, ShoppingBag, CheckCircle,
   XCircle, DollarSign, Truck, Calendar, ArrowUpRight, ChevronRight,
-  AlertCircle, User, Phone, MapPin, Receipt
+  AlertCircle, User, Phone, MapPin, Receipt, TrendingUp, Layers
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +30,7 @@ interface Order {
   deposit_amount: number | null;
   delivery_date: string | null;
   created_at: string;
+  interest_rate: number;
 }
 
 interface Payment {
@@ -48,7 +49,7 @@ interface Profile {
   address: string | null;
 }
 
-type TabType = "orders" | "payments" | "profile";
+type TabType = "orders" | "installments" | "payments" | "profile";
 
 const statusConfig: Record<string, { color: string; icon: typeof Clock; label: string }> = {
   pending: { color: "bg-yellow-100 text-yellow-800 border-yellow-200", icon: Clock, label: "Pending" },
@@ -60,6 +61,40 @@ const statusConfig: Record<string, { color: string; icon: typeof Clock; label: s
   cancelled: { color: "bg-red-100 text-red-800 border-red-200", icon: XCircle, label: "Cancelled" },
 };
 
+const buildInstallmentSchedule = (order: Order, orderPayments: Payment[]) => {
+  const months = order.installment_months || 1;
+  const depositPaid = order.deposit_amount || 0;
+  const balanceAfterDeposit = order.total_payable - depositPaid;
+  const monthlyAmount = months > 0 ? Math.ceil(balanceAfterDeposit / months) : balanceAfterDeposit;
+  const startDate = new Date(order.created_at);
+
+  const successfulPayments = orderPayments
+    .filter(p => p.status === "success")
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  let runningPaid = depositPaid;
+
+  return Array.from({ length: months }, (_, i) => {
+    const dueDate = new Date(startDate);
+    dueDate.setMonth(dueDate.getMonth() + i + 1);
+
+    const payment = successfulPayments[i] || null;
+    if (payment) runningPaid += payment.amount;
+
+    const isPaid = runningPaid >= monthlyAmount * (i + 1) + depositPaid - monthlyAmount || (payment && payment.status === "success");
+    const isOverdue = !isPaid && dueDate < new Date();
+
+    return {
+      month: i + 1,
+      dueDate,
+      amount: monthlyAmount,
+      isPaid: !!payment,
+      isOverdue,
+      payment,
+    };
+  });
+};
+
 const Dashboard = () => {
   const { user, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -69,6 +104,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("orders");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [expandedInstallment, setExpandedInstallment] = useState<string | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ full_name: "", phone: "", address: "" });
 
@@ -115,6 +151,7 @@ const Dashboard = () => {
   const totalSpent = orders.reduce((sum, o) => sum + o.total_paid, 0);
   const totalOutstanding = orders.reduce((sum, o) => sum + o.remaining_balance, 0);
   const activeOrders = orders.filter(o => !["delivered", "cancelled"].includes(o.status));
+  const installmentOrders = orders.filter(o => o.payment_type === "deposit" && (o.installment_months || 0) > 0);
 
   const upcomingPayments = orders
     .filter(o => o.next_payment_due && o.remaining_balance > 0)
@@ -130,8 +167,9 @@ const Dashboard = () => {
     );
   }
 
-  const tabs: { id: TabType; label: string; icon: typeof Package }[] = [
+  const tabs: { id: TabType; label: string; icon: typeof Package; badge?: number }[] = [
     { id: "orders", label: "Orders", icon: ShoppingBag },
+    { id: "installments", label: "Installments", icon: Layers, badge: installmentOrders.filter(o => o.remaining_balance > 0).length || undefined },
     { id: "payments", label: "Payments", icon: Receipt },
     { id: "profile", label: "Profile", icon: User },
   ];
@@ -212,19 +250,24 @@ const Dashboard = () => {
           )}
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-5 bg-secondary/50 p-1 rounded-xl">
-            {tabs.map(({ id, label, icon: Icon }) => (
+          <div className="flex gap-1 mb-5 bg-secondary/50 p-1 rounded-xl overflow-x-auto">
+            {tabs.map(({ id, label, icon: Icon, badge }) => (
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-all relative whitespace-nowrap min-w-0 ${
                   activeTab === id
                     ? "bg-card text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{label}</span>
+                {badge ? (
+                  <span className="absolute -top-1 -right-1 bg-accent text-accent-foreground text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                    {badge}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -394,6 +437,248 @@ const Dashboard = () => {
               </motion.div>
             )}
 
+            {/* INSTALLMENTS TAB */}
+            {activeTab === "installments" && (
+              <motion.div key="installments" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                {installmentOrders.length === 0 ? (
+                  <div className="bg-card rounded-2xl p-10 text-center shadow-sm border border-border/50">
+                    <Layers className="w-10 h-10 text-border mx-auto mb-3" />
+                    <h3 className="font-display font-semibold text-foreground mb-1 text-sm">No installment plans</h3>
+                    <p className="text-xs text-muted-foreground mb-4">Use EasyBuy to spread payments over time.</p>
+                    <Link to="/easybuy">
+                      <Button size="sm" className="bg-gradient-gold text-accent-foreground rounded-xl shadow-gold text-xs">
+                        Learn About EasyBuy
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Summary banner */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-card rounded-xl p-3 shadow-sm border border-border/50 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1">Active Plans</p>
+                        <p className="text-xl font-display font-bold text-foreground">
+                          {installmentOrders.filter(o => o.remaining_balance > 0).length}
+                        </p>
+                      </div>
+                      <div className="bg-card rounded-xl p-3 shadow-sm border border-border/50 text-center">
+                        <p className="text-[10px] text-muted-foreground mb-1">Total Outstanding</p>
+                        <p className="text-xl font-display font-bold text-orange-500">
+                          {formatPrice(installmentOrders.reduce((s, o) => s + o.remaining_balance, 0))}
+                        </p>
+                      </div>
+                    </div>
+
+                    {installmentOrders.map((order, idx) => {
+                      const orderPayments = getOrderPayments(order.id);
+                      const schedule = buildInstallmentSchedule(order, orderPayments);
+                      const progressPercent = order.total_payable > 0 ? Math.min((order.total_paid / order.total_payable) * 100, 100) : 0;
+                      const config = statusConfig[order.status] || statusConfig.pending;
+                      const monthsPaid = schedule.filter(s => s.isPaid).length;
+                      const totalMonths = schedule.length;
+                      const monthlyAmount = schedule[0]?.amount || 0;
+                      const overdueMonths = schedule.filter(s => s.isOverdue).length;
+                      const isExpanded = expandedInstallment === order.id;
+
+                      return (
+                        <motion.div
+                          key={order.id}
+                          initial={{ opacity: 0, y: 15 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.08 }}
+                          className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden"
+                        >
+                          {/* Header */}
+                          <div
+                            className="p-4 cursor-pointer"
+                            onClick={() => setExpandedInstallment(isExpanded ? null : order.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <div>
+                                <h3 className="text-sm font-display font-semibold text-foreground leading-tight">{order.product_name}</h3>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  Started {new Date(order.created_at).toLocaleDateString()} • {totalMonths}-month plan
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                <Badge variant="outline" className={`text-[9px] ${config.color}`}>{config.label}</Badge>
+                                {overdueMonths > 0 && (
+                                  <Badge variant="outline" className="text-[9px] bg-red-50 text-red-700 border-red-200">
+                                    {overdueMonths} overdue
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="mb-3">
+                              <div className="flex justify-between text-[10px] mb-1.5">
+                                <span className="text-muted-foreground">Overall Progress</span>
+                                <span className="font-semibold text-foreground">{Math.round(progressPercent)}% complete</span>
+                              </div>
+                              <div className="w-full bg-secondary rounded-full h-3 overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${progressPercent}%` }}
+                                  transition={{ duration: 1.2, delay: idx * 0.1 }}
+                                  className={`h-3 rounded-full ${progressPercent >= 100 ? "bg-green-500" : "bg-gradient-to-r from-accent to-yellow-400"}`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Key Figures */}
+                            <div className="grid grid-cols-4 gap-2 mb-3">
+                              <div className="bg-secondary/50 rounded-lg p-2 text-center">
+                                <p className="text-[9px] text-muted-foreground">Monthly</p>
+                                <p className="text-[11px] font-bold text-foreground">{formatPrice(monthlyAmount)}</p>
+                              </div>
+                              <div className="bg-green-50 rounded-lg p-2 text-center">
+                                <p className="text-[9px] text-green-600">Paid</p>
+                                <p className="text-[11px] font-bold text-green-700">{monthsPaid}/{totalMonths}</p>
+                              </div>
+                              <div className="bg-orange-50 rounded-lg p-2 text-center">
+                                <p className="text-[9px] text-orange-600">Balance</p>
+                                <p className="text-[11px] font-bold text-orange-700">{formatPrice(order.remaining_balance)}</p>
+                              </div>
+                              <div className="bg-secondary/50 rounded-lg p-2 text-center">
+                                <p className="text-[9px] text-muted-foreground">Interest</p>
+                                <p className="text-[11px] font-bold text-foreground">{(order.interest_rate * 100).toFixed(0)}%</p>
+                              </div>
+                            </div>
+
+                            {/* Month dots preview */}
+                            <div className="flex gap-1.5 flex-wrap mb-2">
+                              {schedule.map((s) => (
+                                <div
+                                  key={s.month}
+                                  title={`Month ${s.month} — ${s.dueDate.toLocaleDateString()} — ${formatPrice(s.amount)}`}
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold transition-all ${
+                                    s.isPaid
+                                      ? "bg-green-500 text-white"
+                                      : s.isOverdue
+                                      ? "bg-red-500 text-white"
+                                      : "bg-secondary text-muted-foreground border border-border"
+                                  }`}
+                                >
+                                  {s.month}
+                                </div>
+                              ))}
+                            </div>
+                            <p className="text-[9px] text-muted-foreground">
+                              <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1" />Paid
+                              <span className="inline-block w-2 h-2 rounded-full bg-red-500 mx-1 ml-2" />Overdue
+                              <span className="inline-block w-2 h-2 rounded-full bg-secondary border border-border mx-1 ml-2" />Upcoming
+                            </p>
+
+                            <div className="flex items-center justify-center mt-2">
+                              <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                            </div>
+                          </div>
+
+                          {/* Expanded monthly schedule */}
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="border-t border-border/50 overflow-hidden"
+                              >
+                                <div className="p-4 bg-secondary/20">
+                                  <h4 className="text-[11px] font-semibold text-foreground mb-3 flex items-center gap-1.5">
+                                    <TrendingUp className="w-3.5 h-3.5 text-accent" />
+                                    Monthly Payment Schedule
+                                  </h4>
+
+                                  {/* Deposit row */}
+                                  {order.deposit_amount && order.deposit_amount > 0 && (
+                                    <div className="flex items-center gap-3 mb-2 bg-green-50 rounded-xl p-2.5">
+                                      <div className="w-7 h-7 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                                        <CheckCircle className="w-3.5 h-3.5 text-white" />
+                                      </div>
+                                      <div className="flex-1">
+                                        <p className="text-[11px] font-semibold text-green-800">Deposit Paid</p>
+                                        <p className="text-[9px] text-green-600">{new Date(order.created_at).toLocaleDateString()}</p>
+                                      </div>
+                                      <span className="text-[11px] font-bold text-green-700">{formatPrice(order.deposit_amount)}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Monthly rows */}
+                                  <div className="space-y-2">
+                                    {schedule.map((s) => (
+                                      <div
+                                        key={s.month}
+                                        className={`flex items-center gap-3 rounded-xl p-2.5 ${
+                                          s.isPaid
+                                            ? "bg-green-50"
+                                            : s.isOverdue
+                                            ? "bg-red-50"
+                                            : "bg-card border border-border/50"
+                                        }`}
+                                      >
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                                          s.isPaid ? "bg-green-500 text-white" : s.isOverdue ? "bg-red-500 text-white" : "bg-secondary text-muted-foreground"
+                                        }`}>
+                                          {s.isPaid ? <CheckCircle className="w-3.5 h-3.5" /> : s.month}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className={`text-[11px] font-semibold ${
+                                            s.isPaid ? "text-green-800" : s.isOverdue ? "text-red-800" : "text-foreground"
+                                          }`}>
+                                            Month {s.month}
+                                            {s.isPaid && " — Paid"}
+                                            {s.isOverdue && " — Overdue"}
+                                          </p>
+                                          <p className={`text-[9px] ${
+                                            s.isPaid ? "text-green-600" : s.isOverdue ? "text-red-500" : "text-muted-foreground"
+                                          }`}>
+                                            Due: {s.dueDate.toLocaleDateString()}
+                                            {s.payment && ` • Paid via ${s.payment.payment_gateway || "N/A"}`}
+                                          </p>
+                                        </div>
+                                        <span className={`text-[11px] font-bold ${
+                                          s.isPaid ? "text-green-700" : s.isOverdue ? "text-red-700" : "text-foreground"
+                                        }`}>
+                                          {formatPrice(s.amount)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Summary footer */}
+                                  <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-2 text-[10px]">
+                                    <div className="bg-card rounded-lg p-2">
+                                      <span className="text-muted-foreground">Total Payable</span>
+                                      <p className="font-bold text-foreground text-xs">{formatPrice(order.total_payable)}</p>
+                                    </div>
+                                    <div className="bg-card rounded-lg p-2">
+                                      <span className="text-muted-foreground">Amount Paid</span>
+                                      <p className="font-bold text-green-600 text-xs">{formatPrice(order.total_paid)}</p>
+                                    </div>
+                                    <div className="bg-card rounded-lg p-2">
+                                      <span className="text-muted-foreground">Remaining</span>
+                                      <p className="font-bold text-orange-600 text-xs">{formatPrice(order.remaining_balance)}</p>
+                                    </div>
+                                    {order.next_payment_due && order.remaining_balance > 0 && (
+                                      <div className="bg-accent/10 rounded-lg p-2">
+                                        <span className="text-accent">Next Due</span>
+                                        <p className="font-bold text-foreground text-xs">{new Date(order.next_payment_due).toLocaleDateString()}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
             {/* PAYMENTS TAB */}
             {activeTab === "payments" && (
               <motion.div key="payments" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
@@ -453,6 +738,11 @@ const Dashboard = () => {
                             <p className="text-[9px] text-muted-foreground mt-1">{new Date(payment.created_at).toLocaleDateString()}</p>
                           </div>
                         </div>
+                        {payment.payment_reference && (
+                          <p className="text-[9px] text-muted-foreground mt-1.5 font-mono truncate">
+                            Ref: {payment.payment_reference}
+                          </p>
+                        )}
                       </motion.div>
                     );
                   })}
