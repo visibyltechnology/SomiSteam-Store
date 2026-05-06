@@ -56,7 +56,7 @@ const FeaturedProducts = () => {
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-80px" }}
-          className="grid grid-cols-3 gap-2"
+          className="grid grid-cols-2 gap-3"
         >
           {products.map((product) => (
             <motion.div key={product.id} variants={cardVariants}>
@@ -123,4 +123,5 @@ const FeaturedProducts = () => {
 };
 
 export default FeaturedProducts;
+
 
