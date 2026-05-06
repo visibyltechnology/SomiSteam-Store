@@ -75,15 +75,18 @@ const Login = () => {
       return;
     }
     setResetLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setResetLoading(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      const { error } = await supabase.functions.invoke("send-reset-email", {
+        body: { email: email.trim() },
+      });
+      if (error) throw error;
       toast.success("Password reset link sent! Check your email.");
       setForgotMode(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send reset email";
+      toast.error(msg);
+    } finally {
+      setResetLoading(false);
     }
   };
 
