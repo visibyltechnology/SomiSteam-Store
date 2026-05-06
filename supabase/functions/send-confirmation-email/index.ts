@@ -5,7 +5,7 @@ const corsHeaders = {
 };
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const FROM_EMAIL = "SomiSteam Ventures <noreply@somisteam.com>";
+const FROM_EMAIL = "SomiSteam Ventures <noreply@somisteamelectronics.com>";
 
 const logoUrl = "https://afdgjlkivfhwqhjoaylg.supabase.co/storage/v1/object/public/product-images/somisteam-logo.jpg";
 
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
           </td></tr>
         </table>
 
-        <p style="margin:0 0 24px;font-size:14px;color:#555555;">You can track your order anytime from your <a href="https://somisteam-store.vercel.app/dashboard" style="color:#c0160c;font-weight:600;text-decoration:none;">customer dashboard</a>.</p>
+        <p style="margin:0 0 24px;font-size:14px;color:#555555;">You can track your order anytime from your <a href="https://somisteamelectronics.com/dashboard" style="color:#c0160c;font-weight:600;text-decoration:none;">customer dashboard</a>.</p>
         <p style="margin:0;font-size:14px;color:#555555;">Thank you for shopping with SomiSteam Ventures!</p>
       `);
 
@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
           </td></tr>
         </table>
 
-        <p style="margin:0;font-size:14px;color:#555555;">View your full payment history on your <a href="https://somisteam-store.vercel.app/dashboard" style="color:#c0160c;font-weight:600;text-decoration:none;">dashboard</a>.</p>
+        <p style="margin:0;font-size:14px;color:#555555;">View your full payment history on your <a href="https://somisteamelectronics.com/dashboard" style="color:#c0160c;font-weight:600;text-decoration:none;">dashboard</a>.</p>
       `);
 
     } else if (type === "welcome") {
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
           <tr>
             <td align="center">
-              <a href="https://somisteam-store.vercel.app/shop" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;">Start Shopping</a>
+              <a href="https://somisteamelectronics.com/shop" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;">Start Shopping</a>
             </td>
           </tr>
         </table>
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
           <tr>
             <td align="center">
-              <a href="https://somisteam-store.vercel.app/dashboard" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;">Pay Now</a>
+              <a href="https://somisteamelectronics.com/dashboard" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;">Pay Now</a>
             </td>
           </tr>
         </table>
