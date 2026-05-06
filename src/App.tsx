@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Watermark from "./components/Watermark.tsx";
 import PageLoader from "./components/PageLoader.tsx";
+import WhatsAppButton from "./components/WhatsAppButton.tsx";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
           <AuthProvider>
             <PageLoader />
             <Watermark />
+            <WhatsAppButton />
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/shop" element={<Shop />} />

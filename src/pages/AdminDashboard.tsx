@@ -5,7 +5,8 @@ import {
   Plus, Package, Users, CreditCard, TrendingUp, Trash2, LogOut,
   BarChart3, Upload, Image, Eye, Search, Filter, ChevronDown,
   DollarSign, Calendar, ShoppingBag, AlertCircle, CheckCircle,
-  Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical
+  Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
+  Settings, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -70,7 +71,7 @@ interface DBProfile {
   created_at: string;
 }
 
-type TabType = "overview" | "products" | "orders" | "payments" | "customers";
+type TabType = "overview" | "products" | "orders" | "payments" | "customers" | "settings";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -92,7 +93,7 @@ const statusIcons: Record<string, typeof Clock> = {
   cancelled: XCircle,
 };
 
-const CHART_COLORS = ["hsl(38,92%,50%)", "hsl(222,47%,11%)", "hsl(220,26%,20%)", "hsl(43,96%,56%)", "hsl(33,90%,40%)", "hsl(220,9%,46%)"];
+const CHART_COLORS = ["hsl(0,85%,40%)", "hsl(0,80%,55%)", "hsl(0,70%,65%)", "hsl(0,60%,75%)", "hsl(0,50%,80%)", "hsl(0,40%,85%)"];
 
 const categories = ["Televisions", "Refrigerators", "Washing Machines", "Air Conditioners", "Microwaves", "Generators"];
 
@@ -111,6 +112,14 @@ const AdminDashboard = () => {
   const [productImages, setProductImages] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Settings state
+  const [flutterwaveEnabled, setFlutterwaveEnabled] = useState(true);
+  const [flutterwavePublicKey, setFlutterwavePublicKey] = useState("");
+  const [flutterwaveSecretKey, setFlutterwaveSecretKey] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("+234 803 331 8896");
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [showSecretKey, setShowSecretKey] = useState(false);
+
   const [newProduct, setNewProduct] = useState({
     name: "", brand: "Hisense", category: "Televisions",
     description: "", price: "", min_deposit: "", max_installment_months: "6",
@@ -122,7 +131,10 @@ const AdminDashboard = () => {
       navigate("/login");
       return;
     }
-    if (user && isAdmin) fetchData();
+    if (user && isAdmin) {
+      fetchData();
+      fetchSettings();
+    }
   }, [user, isAdmin, authLoading]);
 
   const fetchData = async () => {
@@ -137,6 +149,33 @@ const AdminDashboard = () => {
     if (paymentsRes.data) setPayments(paymentsRes.data);
     if (customersRes.data) setCustomers(customersRes.data);
     setLoading(false);
+  };
+
+  const fetchSettings = async () => {
+    const { data } = await supabase.from("app_settings").select("*");
+    if (data) {
+      data.forEach((s: { key: string; value: string }) => {
+        if (s.key === "flutterwave_enabled") setFlutterwaveEnabled(s.value === "true");
+        if (s.key === "flutterwave_public_key") setFlutterwavePublicKey(s.value);
+        if (s.key === "flutterwave_secret_key") setFlutterwaveSecretKey(s.value);
+        if (s.key === "whatsapp_number") setWhatsappNumber(s.value);
+      });
+    }
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    const settings = [
+      { key: "flutterwave_enabled", value: flutterwaveEnabled ? "true" : "false" },
+      { key: "flutterwave_public_key", value: flutterwavePublicKey },
+      { key: "flutterwave_secret_key", value: flutterwaveSecretKey },
+      { key: "whatsapp_number", value: whatsappNumber },
+    ];
+    for (const s of settings) {
+      await supabase.from("app_settings").upsert({ key: s.key, value: s.value }, { onConflict: "key" });
+    }
+    setSavingSettings(false);
+    toast.success("Settings saved successfully!");
   };
 
   const handleImageUpload = async (files: File[]): Promise<string[]> => {
@@ -160,13 +199,11 @@ const AdminDashboard = () => {
       toast.error("Name and price are required");
       return;
     }
-
     setUploadingImage(true);
     let imageUrls: string[] = [];
     if (productImages.length > 0) {
       imageUrls = await handleImageUpload(productImages);
     }
-
     const { error } = await supabase.from("products").insert({
       name: newProduct.name,
       brand: newProduct.brand,
@@ -178,7 +215,6 @@ const AdminDashboard = () => {
       features: newProduct.features.split(",").map((f) => f.trim()).filter(Boolean),
       images: imageUrls.length > 0 ? imageUrls : null,
     });
-
     setUploadingImage(false);
     if (error) {
       toast.error(error.message);
@@ -203,7 +239,6 @@ const AdminDashboard = () => {
     else { toast.success("Status updated"); fetchData(); }
   };
 
-  // Analytics data
   const totalRevenue = orders.reduce((sum, o) => sum + o.total_paid, 0);
   const pendingPayments = orders.reduce((sum, o) => sum + o.remaining_balance, 0);
   const completedOrders = orders.filter(o => o.status === "delivered").length;
@@ -261,6 +296,7 @@ const AdminDashboard = () => {
     { id: "orders", label: "Orders", icon: ShoppingBag },
     { id: "payments", label: "Payments", icon: CreditCard },
     { id: "customers", label: "Customers", icon: Users },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -308,10 +344,10 @@ const AdminDashboard = () => {
 
       <div className="container mx-auto px-4 lg:px-8 py-6">
         <AnimatePresence mode="wait">
+
           {/* OVERVIEW TAB */}
           {activeTab === "overview" && (
             <motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-              {/* Stats Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                 {[
                   { icon: DollarSign, label: "Total Revenue", value: formatPrice(totalRevenue), trend: "+12%", up: true, color: "bg-green-50 text-green-600" },
@@ -339,17 +375,16 @@ const AdminDashboard = () => {
                 ))}
               </div>
 
-              {/* Charts */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <div className="bg-card rounded-2xl p-5 shadow-sm border border-border/50">
                   <h3 className="text-sm font-display font-semibold text-foreground mb-4">Revenue Trend</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <LineChart data={revenueByMonth}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,13%,91%)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(220,9%,46%)" />
-                      <YAxis tick={{ fontSize: 10 }} stroke="hsl(220,9%,46%)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,10%,91%)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="hsl(0,5%,46%)" />
+                      <YAxis tick={{ fontSize: 10 }} stroke="hsl(0,5%,46%)" />
                       <Tooltip formatter={(v: number) => formatPrice(v)} />
-                      <Line type="monotone" dataKey="revenue" stroke="hsl(38,92%,50%)" strokeWidth={2} dot={{ fill: "hsl(38,92%,50%)" }} />
+                      <Line type="monotone" dataKey="revenue" stroke="hsl(0,85%,40%)" strokeWidth={2} dot={{ fill: "hsl(0,85%,40%)" }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -358,7 +393,7 @@ const AdminDashboard = () => {
                   <h3 className="text-sm font-display font-semibold text-foreground mb-4">Orders by Status</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
-                      <Pie data={ordersByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, value }) => `${name} (${value})`} labelLine={{ stroke: "hsl(220,9%,46%)" }}>
+                      <Pie data={ordersByStatus} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, value }) => `${name} (${value})`} labelLine={{ stroke: "hsl(0,5%,46%)" }}>
                         {ordersByStatus.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                       </Pie>
                       <Tooltip />
@@ -371,16 +406,15 @@ const AdminDashboard = () => {
                 <h3 className="text-sm font-display font-semibold text-foreground mb-4">Products by Category</h3>
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={productsByCategory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,13%,91%)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="hsl(220,9%,46%)" angle={-20} textAnchor="end" height={50} />
-                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(220,9%,46%)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(0,10%,91%)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="hsl(0,5%,46%)" angle={-20} textAnchor="end" height={50} />
+                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(0,5%,46%)" />
                     <Tooltip />
-                    <Bar dataKey="value" fill="hsl(38,92%,50%)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(0,85%,40%)" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Recent Orders */}
               <div className="mt-6 bg-card rounded-2xl p-5 shadow-sm border border-border/50">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-display font-semibold text-foreground">Recent Orders</h3>
@@ -438,7 +472,7 @@ const AdminDashboard = () => {
                     <div className="space-y-4 mt-4">
                       <div>
                         <label className="text-sm font-medium text-foreground mb-1 block">Product Name</label>
-                        <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="Hisense 55&quot; 4K Smart TV" className="rounded-xl" />
+                        <Input value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder='Hisense 55" 4K Smart TV' className="rounded-xl" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -615,7 +649,6 @@ const AdminDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Progress bar */}
                       <div className="w-full bg-secondary rounded-full h-1.5 mb-3">
                         <div
                           className="bg-accent rounded-full h-1.5 transition-all"
@@ -652,7 +685,6 @@ const AdminDashboard = () => {
                 <Input placeholder="Search payments..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
               </div>
 
-              {/* Payment Stats */}
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="bg-card rounded-xl p-3 shadow-sm border border-border/50 text-center">
                   <p className="text-[10px] text-muted-foreground">Total</p>
@@ -762,7 +794,7 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       {customer.address && (
-                        <p className="text-[10px] text-muted-foreground mt-2 pl-[52px]">📍 {customer.address}</p>
+                        <p className="text-[10px] text-muted-foreground mt-2 pl-[52px]">Lagos, Nigeria — {customer.address}</p>
                       )}
                     </motion.div>
                   );
@@ -776,6 +808,122 @@ const AdminDashboard = () => {
               </div>
             </motion.div>
           )}
+
+          {/* SETTINGS TAB */}
+          {activeTab === "settings" && (
+            <motion.div key="settings" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5 max-w-2xl">
+
+              {/* Flutterwave Section */}
+              <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-border/50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center">
+                      <CreditCard className="w-4 h-4 text-accent" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-display font-bold text-foreground">Flutterwave Payment</h3>
+                      <p className="text-[11px] text-muted-foreground">Manage your payment gateway keys</p>
+                    </div>
+                  </div>
+                  {/* ON / OFF Toggle */}
+                  <button
+                    onClick={() => setFlutterwaveEnabled(!flutterwaveEnabled)}
+                    className="flex items-center gap-2 focus:outline-none"
+                    aria-label="Toggle Flutterwave"
+                  >
+                    <span className={`text-xs font-semibold ${flutterwaveEnabled ? "text-green-600" : "text-muted-foreground"}`}>
+                      {flutterwaveEnabled ? "ON" : "OFF"}
+                    </span>
+                    <div className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${flutterwaveEnabled ? "bg-green-500" : "bg-muted-foreground/30"}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${flutterwaveEnabled ? "translate-x-6" : "translate-x-0"}`} />
+                    </div>
+                  </button>
+                </div>
+
+                <div className={`px-5 py-5 space-y-4 transition-opacity ${flutterwaveEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                  <div>
+                    <label className="text-xs font-semibold text-foreground mb-1.5 block">Public Key</label>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        value={flutterwavePublicKey}
+                        onChange={e => setFlutterwavePublicKey(e.target.value)}
+                        placeholder="FLWPUBK-..."
+                        className="pl-9 rounded-xl font-mono text-xs"
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Used in the frontend checkout. Starts with FLWPUBK-</p>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-foreground mb-1.5 block">Secret Key</label>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        value={flutterwaveSecretKey}
+                        onChange={e => setFlutterwaveSecretKey(e.target.value)}
+                        type={showSecretKey ? "text" : "password"}
+                        placeholder="FLWSECK-..."
+                        className="pl-9 pr-16 rounded-xl font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSecretKey(!showSecretKey)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-accent hover:underline"
+                      >
+                        {showSecretKey ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Used server-side only. Keep this secret. Starts with FLWSECK-</p>
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <p className="text-[11px] text-amber-800 font-medium">After updating keys here, also update them in your Supabase edge function secrets for live payment processing.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* WhatsApp Section */}
+              <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-border/50 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-green-50 flex items-center justify-center">
+                    <Phone className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-display font-bold text-foreground">WhatsApp Chat Button</h3>
+                    <p className="text-[11px] text-muted-foreground">Number customers tap to chat with you</p>
+                  </div>
+                </div>
+                <div className="px-5 py-5">
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">WhatsApp Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      value={whatsappNumber}
+                      onChange={e => setWhatsappNumber(e.target.value)}
+                      placeholder="+234 803 331 8896"
+                      className="pl-9 rounded-xl"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">Include country code (e.g. +234 803 331 8896). The chat button on the site will use this number.</p>
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <Button
+                onClick={saveSettings}
+                disabled={savingSettings}
+                className="w-full bg-gradient-gold text-accent-foreground rounded-xl shadow-gold h-11 text-sm font-semibold"
+              >
+                {savingSettings ? (
+                  <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                ) : (
+                  <><Save className="w-4 h-4 mr-2" /> Save Settings</>
+                )}
+              </Button>
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </div>
     </div>
