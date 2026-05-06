@@ -22,7 +22,7 @@ function emailTemplate(title: string, body: string): string {
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-          
+
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#c0160c 0%,#e01f14 100%);padding:32px 40px;text-align:center;">
@@ -200,6 +200,58 @@ Deno.serve(async (req) => {
           <tr>
             <td align="center">
               <a href="https://somisteamelectronics.com/dashboard" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:10px;font-size:15px;font-weight:700;">Pay Now</a>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin:0;font-size:13px;color:#888888;">Need help? WhatsApp us at <a href="https://wa.me/2348033318896" style="color:#c0160c;text-decoration:none;">+234 803 331 8896</a>.</p>
+      `);
+
+    } else if (type === "login_alert") {
+      subject = "New Sign-In to Your SomiSteam Account";
+      htmlBody = emailTemplate(subject, `
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+          <tr>
+            <td style="background:#fff3cd;border-left:4px solid #f59e0b;border-radius:8px;padding:14px 18px;">
+              <p style="margin:0;font-size:14px;font-weight:700;color:#92400e;">🔐 Security Notice</p>
+              <p style="margin:4px 0 0;font-size:13px;color:#78350f;">A new sign-in was detected on your account.</p>
+            </td>
+          </tr>
+        </table>
+
+        <h2 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a1a;">New Sign-In Detected</h2>
+        <p style="margin:0 0 24px;font-size:15px;color:#444444;">Hi ${name || "there"}, someone just signed in to your SomiSteam account.</p>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;border-radius:12px;margin-bottom:24px;">
+          <tr><td style="padding:20px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:8px 0;font-size:13px;color:#888888;width:40%;border-bottom:1px solid #eeeeee;">Date &amp; Time</td>
+                <td style="padding:8px 0;font-size:13px;font-weight:600;color:#1a1a1a;text-align:right;border-bottom:1px solid #eeeeee;">${data.login_time}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;font-size:13px;color:#888888;border-bottom:1px solid #eeeeee;">Device</td>
+                <td style="padding:8px 0;font-size:13px;font-weight:600;color:#1a1a1a;text-align:right;border-bottom:1px solid #eeeeee;">${data.device}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;font-size:13px;color:#888888;">Account</td>
+                <td style="padding:8px 0;font-size:13px;font-weight:600;color:#1a1a1a;text-align:right;">${email}</td>
+              </tr>
+            </table>
+          </td></tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fdf2f2;border-radius:12px;padding:0;margin-bottom:24px;">
+          <tr><td style="padding:16px 20px;">
+            <p style="margin:0;font-size:14px;font-weight:700;color:#c0160c;">Was this you?</p>
+            <p style="margin:6px 0 0;font-size:13px;color:#555555;">If you signed in, you can ignore this email. If you did <strong>not</strong> sign in, your account may be at risk — please change your password immediately.</p>
+          </td></tr>
+        </table>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+          <tr>
+            <td align="center">
+              <a href="https://somisteamelectronics.com/login" style="display:inline-block;background:linear-gradient(135deg,#c0160c,#e01f14);color:#ffffff;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:14px;font-weight:700;">Secure My Account</a>
             </td>
           </tr>
         </table>
