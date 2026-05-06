@@ -114,6 +114,16 @@ export const formatPrice = (amount: number) => {
   }).format(amount);
 };
 
-export const calculateInstallment = (price: number, months: number) => {
-  return Math.ceil(price / months);
+export const calculateInstallment = (price: number, depositAmount: number) => {
+  // Interest tiers based on deposit percentage
+  const depositRatio = depositAmount / price;
+  let interestRate = 0.30; // 30% default
+  if (depositRatio >= 0.5) interestRate = 0.10;       // 50%+ deposit → 10%
+  else if (depositRatio >= 0.35) interestRate = 0.20; // 35%+ deposit → 20%
+
+  const interestAmount = Math.round(price * interestRate);
+  const totalPayable = price + interestAmount;
+  const balance = totalPayable - depositAmount;
+
+  return { interestRate, interestAmount, totalPayable, balance };
 };
