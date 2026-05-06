@@ -1,9 +1,9 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.100.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type",
 };
 
 interface PaymentRequest {
@@ -50,24 +50,50 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
 
+    // Service-role client for DB operations
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const anonClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(
-      authHeader.replace("Bearer ", "")
-    );
-    if (claimsError || !claimsData?.claims) {
+    // Verify the user JWT using the service role client
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
+    const userId = userData.user.id;
+
+    // Read Flutterwave secret key from app_settings table (set by admin)
+    const { data: settings, error: settingsError } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["flutterwave_secret_key", "flutterwave_public_key"]);
+
+    if (settingsError) {
+      console.error("Settings fetch error:", settingsError);
+      return new Response(JSON.stringify({ error: "Could not load payment settings" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const settingsMap: Record<string, string> = {};
+    (settings || []).forEach((s: { key: string; value: string }) => {
+      settingsMap[s.key] = s.value;
+    });
+
+    const flutterwaveSecretKey = settingsMap["flutterwave_secret_key"] ||
+      Deno.env.get("FLUTTERWAVE_SECRET_KEY") || "";
+
+    if (!flutterwaveSecretKey) {
+      return new Response(JSON.stringify({ error: "Payment gateway not configured. Please contact support." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const body: PaymentRequest = await req.json();
     const {
       gateway,
@@ -114,7 +140,7 @@ Deno.serve(async (req) => {
 
     if (orderError) {
       console.error("Order creation error:", orderError);
-      return new Response(JSON.stringify({ error: "Failed to create order" }), {
+      return new Response(JSON.stringify({ error: "Failed to create order: " + orderError.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -132,7 +158,7 @@ Deno.serve(async (req) => {
       payment_gateway: gateway,
     });
 
-    // Get customer's name from profile (non-blocking)
+    // Get customer name from profile (non-blocking)
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name")
@@ -141,7 +167,7 @@ Deno.serve(async (req) => {
 
     const customerName = profile?.full_name || email.split("@")[0];
 
-    // Fire "order_confirmed" email (non-blocking — won't slow checkout)
+    // Fire order_confirmed email (non-blocking)
     sendEmail(supabaseUrl, {
       type: "order_confirmed",
       email,
@@ -156,10 +182,10 @@ Deno.serve(async (req) => {
     });
 
     // Initialize Flutterwave payment
-    const res = await fetch("https://api.flutterwave.com/v3/payments", {
+    const fwRes = await fetch("https://api.flutterwave.com/v3/payments", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${Deno.env.get("FLUTTERWAVE_SECRET_KEY")}`,
+        Authorization: `Bearer ${flutterwaveSecretKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -176,15 +202,19 @@ Deno.serve(async (req) => {
         },
       }),
     });
-    const data = await res.json();
-    if (data.status !== "success") throw new Error(data.message || "Flutterwave init failed");
-    const paymentUrl = data.data.link;
 
+    const fwData = await fwRes.json();
+    if (fwData.status !== "success") {
+      console.error("Flutterwave error:", JSON.stringify(fwData));
+      throw new Error(fwData.message || "Payment gateway error. Please try again.");
+    }
+
+    const paymentUrl = fwData.data.link;
     return new Response(
       JSON.stringify({ payment_url: paymentUrl, reference, order_id: order.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Payment initialization error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Payment initialization failed" }),
