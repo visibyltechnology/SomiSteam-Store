@@ -6,6 +6,18 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function sendEmail(supabaseUrl: string, payload: object): Promise<void> {
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/send-confirmation-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.error("Email send failed (non-fatal):", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -20,12 +32,11 @@ Deno.serve(async (req) => {
       });
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!;
-    const anonClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      anonKey,
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const anonClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
     const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(
       authHeader.replace("Bearer ", "")
@@ -46,23 +57,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const supabase = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     let verified = false;
     let amount = 0;
 
-    if (gateway === "paystack") {
-      const res = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
-        headers: { Authorization: `Bearer ${Deno.env.get("PAYSTACK_SECRET_KEY")}` },
-      });
-      const data = await res.json();
-      verified = data.data?.status === "success";
-      amount = (data.data?.amount || 0) / 100;
-    } else if (gateway === "flutterwave") {
-      // For flutterwave we verify by tx_ref
+    if (gateway === "flutterwave") {
       const res = await fetch(
         `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${reference}`,
         { headers: { Authorization: `Bearer ${Deno.env.get("FLUTTERWAVE_SECRET_KEY")}` } }
@@ -70,24 +70,16 @@ Deno.serve(async (req) => {
       const data = await res.json();
       verified = data.data?.status === "successful";
       amount = data.data?.amount || 0;
-    } else if (gateway === "korapay") {
-      const res = await fetch(
-        `https://api.korapay.com/merchant/api/v1/charges/${reference}`,
-        { headers: { Authorization: `Bearer ${Deno.env.get("KORAPAY_SECRET_KEY")}` } }
-      );
-      const data = await res.json();
-      verified = data.data?.status === "success";
-      amount = data.data?.amount || 0;
     }
 
     if (verified) {
-      // Update payment
+      // Update payment record
       await supabase
         .from("payments")
         .update({ status: "success" })
         .eq("payment_reference", reference);
 
-      // Update order
+      // Fetch current order
       const { data: order } = await supabase
         .from("orders")
         .select("*")
@@ -107,6 +99,33 @@ Deno.serve(async (req) => {
             status: isFullyPaid ? "fully_paid" : "deposit_paid",
           })
           .eq("id", order.id);
+
+        // Get customer email + name for the confirmation email
+        const { data: authUser } = await supabase.auth.admin.getUserById(order.user_id);
+        const customerEmail = authUser?.user?.email;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", order.user_id)
+          .single();
+
+        const customerName = profile?.full_name || (customerEmail?.split("@")[0] ?? "there");
+
+        if (customerEmail) {
+          // Send payment confirmation email (fire-and-forget)
+          sendEmail(supabaseUrl, {
+            type: "payment_received",
+            email: customerEmail,
+            name: customerName,
+            data: {
+              amount,
+              reference,
+              product_name: order.product_name,
+              remaining_balance: Math.max(0, newBalance),
+            },
+          });
+        }
       }
 
       return new Response(

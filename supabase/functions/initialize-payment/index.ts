@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 interface PaymentRequest {
-  gateway: "paystack" | "flutterwave" | "korapay";
+  gateway: "flutterwave";
   amount: number;
   email: string;
   product_id: string;
@@ -20,6 +20,18 @@ interface PaymentRequest {
   remaining_balance: number;
   installment_months?: number;
   callback_url: string;
+}
+
+async function sendEmail(supabaseUrl: string, payload: object): Promise<void> {
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/send-confirmation-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.error("Email send failed (non-fatal):", e);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -109,7 +121,6 @@ Deno.serve(async (req) => {
     }
 
     const reference = `SOMI-${order.id.slice(0, 8)}-${Date.now()}`;
-    const amountInKobo = Math.round(amount * 100);
 
     // Create payment record
     await supabase.from("payments").insert({
@@ -121,77 +132,56 @@ Deno.serve(async (req) => {
       payment_gateway: gateway,
     });
 
-    let paymentUrl = "";
+    // Get customer's name from profile (non-blocking)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", userId)
+      .single();
 
-    if (gateway === "paystack") {
-      const res = await fetch("https://api.paystack.co/transaction/initialize", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("PAYSTACK_SECRET_KEY")}`,
-          "Content-Type": "application/json",
+    const customerName = profile?.full_name || email.split("@")[0];
+
+    // Fire "order_confirmed" email (non-blocking — won't slow checkout)
+    sendEmail(supabaseUrl, {
+      type: "order_confirmed",
+      email,
+      name: customerName,
+      data: {
+        product_name,
+        payment_type,
+        amount_paid: amount,
+        remaining_balance,
+        installment_months: installment_months || 0,
+      },
+    });
+
+    // Initialize Flutterwave payment
+    const res = await fetch("https://api.flutterwave.com/v3/payments", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${Deno.env.get("FLUTTERWAVE_SECRET_KEY")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tx_ref: reference,
+        amount,
+        currency: "NGN",
+        redirect_url: callback_url,
+        customer: { email },
+        meta: { order_id: order.id, product_name, payment_type },
+        customizations: {
+          title: "SomiSteam Ventures Ltd.",
+          description: `Payment for ${product_name}`,
+          logo: "https://afdgjlkivfhwqhjoaylg.supabase.co/storage/v1/object/public/product-images/somisteam-logo.jpg",
         },
-        body: JSON.stringify({
-          email,
-          amount: amountInKobo,
-          reference,
-          callback_url,
-          metadata: { order_id: order.id, product_name, payment_type },
-        }),
-      });
-      const data = await res.json();
-      if (!data.status) throw new Error(data.message || "Paystack init failed");
-      paymentUrl = data.data.authorization_url;
-    } else if (gateway === "flutterwave") {
-      const res = await fetch("https://api.flutterwave.com/v3/payments", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("FLUTTERWAVE_SECRET_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tx_ref: reference,
-          amount,
-          currency: "NGN",
-          redirect_url: callback_url,
-          customer: { email },
-          meta: { order_id: order.id, product_name, payment_type },
-          customizations: {
-            title: "SomiSteam Ventures Ltd.",
-            description: `Payment for ${product_name}`,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.status !== "success") throw new Error(data.message || "Flutterwave init failed");
-      paymentUrl = data.data.link;
-    } else if (gateway === "korapay") {
-      const res = await fetch("https://api.korapay.com/merchant/api/v1/charges/initialize", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${Deno.env.get("KORAPAY_SECRET_KEY")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          amount,
-          redirect_url: callback_url,
-          currency: "NGN",
-          reference,
-          customer: { email },
-          metadata: { order_id: order.id, product_name, payment_type },
-          notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/payment-webhook`,
-        }),
-      });
-      const data = await res.json();
-      if (!data.status) throw new Error(data.message || "KoraPay init failed");
-      paymentUrl = data.data.checkout_url;
-    }
+      }),
+    });
+    const data = await res.json();
+    if (data.status !== "success") throw new Error(data.message || "Flutterwave init failed");
+    const paymentUrl = data.data.link;
 
     return new Response(
-      JSON.stringify({
-        payment_url: paymentUrl,
-        reference,
-        order_id: order.id,
-      }),
+      JSON.stringify({ payment_url: paymentUrl, reference, order_id: order.id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
