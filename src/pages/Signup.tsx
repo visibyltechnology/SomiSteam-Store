@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import somisteamLogo from "@/assets/somisteam-logo.jpg";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -28,9 +29,20 @@ const Signup = () => {
     setLoading(true);
     const { error } = await signUp(email, password, fullName);
     setLoading(false);
+
     if (error) {
       toast.error(error.message);
     } else {
+      // Fire welcome email — non-blocking, won't affect signup flow
+      supabase.functions.invoke("send-confirmation-email", {
+        body: {
+          type: "welcome",
+          email,
+          name: fullName,
+          data: {},
+        },
+      }).catch(() => {});
+
       toast.success("Account created! Please check your email to verify.");
       navigate("/login");
     }

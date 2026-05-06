@@ -1,24 +1,38 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
+type PaymentStatus = "loading" | "success" | "cancelled" | "failed";
+
 const PaymentCallback = () => {
   const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState<"loading" | "success" | "failed">("loading");
+  const [status, setStatus] = useState<PaymentStatus>("loading");
 
   useEffect(() => {
     const verify = async () => {
+      // Flutterwave sends status=cancelled when user closes checkout
+      const flwStatus = searchParams.get("status");
+      if (flwStatus === "cancelled") {
+        setStatus("cancelled");
+        return;
+      }
+
       const reference = searchParams.get("reference") || searchParams.get("tx_ref");
       const gateway = searchParams.get("gateway") || "flutterwave";
       const orderId = searchParams.get("order_id");
 
       if (!reference || !orderId) {
-        setStatus("failed");
+        // No reference = likely a cancelled/abandoned checkout
+        if (flwStatus === "cancelled" || !reference) {
+          setStatus("cancelled");
+        } else {
+          setStatus("failed");
+        }
         return;
       }
 
@@ -61,16 +75,22 @@ const PaymentCallback = () => {
 
           {status === "success" && (
             <>
-              <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+              >
+                <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-6" />
+              </motion.div>
               <h2 className="text-2xl font-display font-bold text-foreground mb-2">
-                Payment Successful! 🎉
+                Payment Successful!
               </h2>
               <p className="text-muted-foreground mb-8">
-                Your payment has been confirmed. You can track your order from your dashboard.
+                Your payment has been confirmed. A confirmation email has been sent to you. Track your order from your dashboard.
               </p>
-              <div className="flex gap-4 justify-center">
+              <div className="flex gap-4 justify-center flex-wrap">
                 <Link to="/dashboard">
-                  <Button className="bg-gradient-gold text-accent-foreground">
+                  <Button className="bg-gradient-gold text-accent-foreground shadow-gold">
                     View Dashboard
                   </Button>
                 </Link>
@@ -81,24 +101,63 @@ const PaymentCallback = () => {
             </>
           )}
 
+          {status === "cancelled" && (
+            <>
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+              >
+                <AlertCircle className="w-20 h-20 text-orange-400 mx-auto mb-6" />
+              </motion.div>
+              <h2 className="text-2xl font-display font-bold text-foreground mb-2">
+                Payment Cancelled
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                You cancelled the payment process. Your transaction was not completed and no money was charged.
+              </p>
+              <p className="text-sm text-muted-foreground mb-8">
+                Your order has been saved. You can retry payment from your dashboard or start a new purchase.
+              </p>
+              <div className="flex gap-4 justify-center flex-wrap">
+                <Link to="/shop">
+                  <Button className="bg-gradient-gold text-accent-foreground shadow-gold">
+                    Back to Shop
+                  </Button>
+                </Link>
+                <Link to="/dashboard">
+                  <Button variant="outline">My Dashboard</Button>
+                </Link>
+              </div>
+            </>
+          )}
+
           {status === "failed" && (
             <>
-              <XCircle className="w-20 h-20 text-destructive mx-auto mb-6" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
+              >
+                <XCircle className="w-20 h-20 text-destructive mx-auto mb-6" />
+              </motion.div>
               <h2 className="text-2xl font-display font-bold text-foreground mb-2">
-                Payment Failed
+                Payment Not Successful
               </h2>
               <p className="text-muted-foreground mb-8">
-                We couldn't verify your payment. Please try again or contact support.
+                We could not verify your payment. If money was deducted, please contact us on WhatsApp and we will resolve it immediately.
               </p>
-              <div className="flex gap-4 justify-center">
+              <div className="flex gap-4 justify-center flex-wrap">
                 <Link to="/shop">
-                  <Button className="bg-gradient-gold text-accent-foreground">
+                  <Button className="bg-gradient-gold text-accent-foreground shadow-gold">
                     Try Again
                   </Button>
                 </Link>
-                <Link to="/contact">
-                  <Button variant="outline">Contact Support</Button>
-                </Link>
+                <a href="https://wa.me/2348033318896?text=Hi, I had a payment issue and need help." target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" className="border-green-500 text-green-600 hover:bg-green-50">
+                    WhatsApp Support
+                  </Button>
+                </a>
               </div>
             </>
           )}

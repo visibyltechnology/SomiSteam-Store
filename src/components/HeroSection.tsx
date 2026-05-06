@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform } from "framer-motion";
-import { ArrowRight, Shield, Truck, CreditCard, Sparkles } from "lucide-react";
+import { ArrowRight, Shield, Truck, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import heroImage from "@/assets/hero-showroom.jpg";
@@ -49,35 +49,26 @@ const HeroSection = () => {
           width={1920}
           height={1080}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-navy/95 via-navy/85 to-navy/50" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy/60 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[hsl(0,85%,28%)]/95 via-[hsl(0,85%,28%)]/85 to-[hsl(0,85%,28%)]/50" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(0,85%,20%)]/60 via-transparent to-transparent" />
       </motion.div>
 
       {/* Floating Particles */}
       {floatingParticles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-gold/20"
+          className="absolute rounded-full bg-white/10"
           style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size }}
-          animate={{
-            y: [-20, 20, -20],
-            x: [-10, 10, -10],
-            opacity: [0.2, 0.6, 0.2],
-          }}
-          transition={{
-            duration: p.duration,
-            repeat: Infinity,
-            delay: p.delay,
-            ease: "easeInOut",
-          }}
+          animate={{ y: [-20, 20, -20], x: [-10, 10, -10], opacity: [0.1, 0.4, 0.1] }}
+          transition={{ duration: p.duration, repeat: Infinity, delay: p.delay, ease: "easeInOut" }}
         />
       ))}
 
       {/* Glowing Orb */}
       <motion.div
         className="absolute w-[600px] h-[600px] rounded-full blur-[120px] opacity-20"
-        style={{ background: "radial-gradient(circle, hsl(38 92% 50% / 0.4), transparent 70%)", right: "-10%", top: "10%" }}
-        animate={{ scale: [1, 1.2, 1], opacity: [0.15, 0.25, 0.15] }}
+        style={{ background: "radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%)", right: "-10%", top: "10%" }}
+        animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       />
 
@@ -89,15 +80,14 @@ const HeroSection = () => {
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/20 text-gold-light text-sm font-medium mb-6 border border-gold/20">
-              <Sparkles className="w-3.5 h-3.5" />
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white/90 text-sm font-medium mb-6 border border-white/20">
               Premium Home Electronics
             </span>
           </motion.div>
 
           {/* Animated Title - Line 1 */}
           <h1 className="text-4xl md:text-5xl lg:text-7xl font-display font-bold leading-tight mb-2">
-            <span className="text-primary-foreground inline-block overflow-hidden">
+            <span className="text-white inline-block overflow-hidden">
               {title1.split("").map((char, i) => (
                 <motion.span
                   key={`t1-${i}`}
@@ -113,8 +103,8 @@ const HeroSection = () => {
               ))}
             </span>
             <br />
-            {/* Line 2 with gold gradient */}
-            <span className="text-gradient-gold inline-block overflow-hidden">
+            {/* Line 2 — white with slight warmth to stand out from line 1 */}
+            <span className="inline-block overflow-hidden" style={{ color: "#FFD6D6" }}>
               {title2.split("").map((char, i) => (
                 <motion.span
                   key={`t2-${i}`}
@@ -136,14 +126,14 @@ const HeroSection = () => {
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
             transition={{ delay: 1.2, duration: 0.8, ease: [0.215, 0.61, 0.355, 1] }}
-            className="h-1 w-24 bg-gradient-gold rounded-full origin-left mb-6"
+            className="h-1 w-24 bg-white/60 rounded-full origin-left mb-6"
           />
 
           <motion.p
             initial={{ opacity: 0, y: 30, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             transition={{ duration: 0.8, delay: 1 }}
-            className="text-lg md:text-xl text-primary-foreground/70 mb-8 max-w-lg"
+            className="text-lg md:text-xl text-white/75 mb-8 max-w-lg"
           >
             Discover premium electronics from Hisense, Samsung, LG and more.
             Buy outright or use our flexible EasyBuy installment plan.
@@ -157,7 +147,7 @@ const HeroSection = () => {
           >
             <Link to="/shop">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button className="bg-gradient-gold text-accent-foreground font-semibold px-8 py-6 text-base rounded-xl hover:opacity-90 transition-opacity shadow-gold">
+                <Button className="bg-white text-accent font-semibold px-8 py-6 text-base rounded-xl hover:bg-white/90 transition-opacity shadow-lg">
                   Shop Now
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
@@ -165,14 +155,14 @@ const HeroSection = () => {
             </Link>
             <Link to="/easybuy">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" className="border-primary-foreground/30 text-primary-foreground px-8 py-6 text-base rounded-xl hover:bg-primary-foreground/10">
+                <Button variant="outline" className="border-white/40 text-white px-8 py-6 text-base rounded-xl hover:bg-white/10 bg-transparent">
                   EasyBuy Plans
                 </Button>
               </motion.div>
             </Link>
           </motion.div>
 
-          {/* Trust Badges with stagger */}
+          {/* Trust Badges */}
           <div className="flex flex-wrap gap-6">
             {[
               { icon: Shield, label: "Genuine Products" },
@@ -184,13 +174,13 @@ const HeroSection = () => {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 1.5 + index * 0.15, duration: 0.5 }}
-                className="flex items-center gap-2 text-primary-foreground/60"
+                className="flex items-center gap-2 text-white/70"
               >
                 <motion.div
                   animate={{ rotate: [0, 10, -10, 0] }}
                   transition={{ duration: 4, repeat: Infinity, delay: index * 0.5 }}
                 >
-                  <Icon className="w-4 h-4 text-gold" />
+                  <Icon className="w-4 h-4 text-white/80" />
                 </motion.div>
                 <span className="text-sm">{label}</span>
               </motion.div>
@@ -209,9 +199,9 @@ const HeroSection = () => {
         <motion.div
           animate={{ y: [0, 10, 0] }}
           transition={{ duration: 1.5, repeat: Infinity }}
-          className="w-6 h-10 rounded-full border-2 border-primary-foreground/30 flex items-start justify-center pt-2"
+          className="w-6 h-10 rounded-full border-2 border-white/30 flex items-start justify-center pt-2"
         >
-          <motion.div className="w-1.5 h-1.5 rounded-full bg-gold" />
+          <motion.div className="w-1.5 h-1.5 rounded-full bg-white/70" />
         </motion.div>
       </motion.div>
     </section>
