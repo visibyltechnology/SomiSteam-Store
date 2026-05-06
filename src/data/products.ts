@@ -9,6 +9,8 @@ export interface Product {
   brand: string;
   category: string;
   price: number;
+  originalPrice: number;
+  discount: number;
   installmentPrice: number;
   description: string;
   image: string;
@@ -16,6 +18,8 @@ export interface Product {
   available: boolean;
   minDeposit: number;
   maxInstallmentMonths: number;
+  stockCount: number;
+  totalStock: number;
 }
 
 export const categories = [
@@ -34,6 +38,8 @@ export const products: Product[] = [
     brand: "Hisense",
     category: "Televisions",
     price: 285000,
+    originalPrice: 320000,
+    discount: 11,
     installmentPrice: 285000,
     description: "Experience stunning 4K UHD resolution with Hisense's advanced VIDAA smart platform. Dolby Vision HDR for lifelike picture quality.",
     image: productTv,
@@ -41,6 +47,8 @@ export const products: Product[] = [
     available: true,
     minDeposit: 50000,
     maxInstallmentMonths: 6,
+    stockCount: 23,
+    totalStock: 60,
   },
   {
     id: "2",
@@ -48,6 +56,8 @@ export const products: Product[] = [
     brand: "Hisense",
     category: "Refrigerators",
     price: 450000,
+    originalPrice: 520000,
+    discount: 13,
     installmentPrice: 450000,
     description: "Spacious French door refrigerator with multi-airflow cooling, inverter compressor and frost-free technology.",
     image: productFridge,
@@ -55,6 +65,8 @@ export const products: Product[] = [
     available: true,
     minDeposit: 100000,
     maxInstallmentMonths: 9,
+    stockCount: 43,
+    totalStock: 80,
   },
   {
     id: "3",
@@ -62,6 +74,8 @@ export const products: Product[] = [
     brand: "Samsung",
     category: "Washing Machines",
     price: 320000,
+    originalPrice: 370000,
+    discount: 14,
     installmentPrice: 320000,
     description: "Advanced front-loading washing machine with EcoBubble technology for powerful yet gentle cleaning.",
     image: productWasher,
@@ -69,6 +83,8 @@ export const products: Product[] = [
     available: true,
     minDeposit: 60000,
     maxInstallmentMonths: 6,
+    stockCount: 50,
+    totalStock: 75,
   },
   {
     id: "4",
@@ -76,6 +92,8 @@ export const products: Product[] = [
     brand: "Hisense",
     category: "Air Conditioners",
     price: 195000,
+    originalPrice: 230000,
+    discount: 15,
     installmentPrice: 195000,
     description: "Energy-efficient split air conditioner with fast cooling, copper condenser and low noise operation.",
     image: productAc,
@@ -83,6 +101,8 @@ export const products: Product[] = [
     available: true,
     minDeposit: 40000,
     maxInstallmentMonths: 6,
+    stockCount: 12,
+    totalStock: 50,
   },
 ];
 
@@ -94,10 +114,6 @@ export const formatPrice = (amount: number) => {
   }).format(amount);
 };
 
-export const calculateInstallment = (price: number, deposit: number) => {
-  const depositPercentage = deposit / price;
-  const interestRate = depositPercentage >= 0.5 ? 0.1 : 0.3;
-  const totalPayable = price + price * interestRate;
-  const balance = totalPayable - deposit;
-  return { totalPayable, balance, interestRate, interestAmount: price * interestRate };
+export const calculateInstallment = (price: number, months: number) => {
+  return Math.ceil(price / months);
 };
