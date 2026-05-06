@@ -21,7 +21,7 @@ const Shop = () => {
             <p className="text-muted-foreground mt-2">Premium electronics for your home</p>
           </motion.div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {products.map((product, index) => (
               <motion.div
                 key={product.id}
@@ -72,4 +72,5 @@ const Shop = () => {
 };
 
 export default Shop;
+
 
