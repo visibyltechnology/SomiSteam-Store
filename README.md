@@ -1,2 +1,3 @@
-# SomiSteam-Store
-SomiSteam Ventures Ltd. Electronics Showroom Store
+# Welcome to your Lovable project
+
+TODO: Document your project here
