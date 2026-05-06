@@ -17,6 +17,37 @@ const Login = () => {
   const { signIn } = useAuth();
   const navigate = useNavigate();
 
+  const sendLoginAlert = async (userEmail: string, userName: string) => {
+    const now = new Date();
+    const loginTime = now.toLocaleString("en-NG", {
+      timeZone: "Africa/Lagos",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " (WAT)";
+
+    const ua = navigator.userAgent;
+    let device = "Desktop / Laptop";
+    if (/iPhone/i.test(ua)) device = "iPhone";
+    else if (/iPad/i.test(ua)) device = "iPad";
+    else if (/Android/i.test(ua) && /Mobile/i.test(ua)) device = "Android Phone";
+    else if (/Android/i.test(ua)) device = "Android Tablet";
+    else if (/Windows/i.test(ua)) device = "Windows PC";
+    else if (/Mac/i.test(ua)) device = "Mac";
+
+    supabase.functions.invoke("send-confirmation-email", {
+      body: {
+        type: "login_alert",
+        email: userEmail,
+        name: userName,
+        data: { login_time: loginTime, device },
+      },
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
@@ -29,6 +60,9 @@ const Login = () => {
     if (error) {
       toast.error(error.message);
     } else {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userName = user?.user_metadata?.full_name || email.split("@")[0];
+      sendLoginAlert(email, userName);
       toast.success("Welcome back!");
       navigate("/dashboard");
     }
