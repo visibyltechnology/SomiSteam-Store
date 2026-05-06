@@ -10,13 +10,12 @@ import { Slider } from "@/components/ui/slider";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import flutterwaveLogo from "@/assets/flutterwave-logo.svg";
 
-type Gateway = "paystack" | "flutterwave" | "korapay";
+type Gateway = "flutterwave";
 
 const gatewayOptions: { id: Gateway; name: string; logo: string }[] = [
-  { id: "paystack", name: "Paystack", logo: "💳" },
-  { id: "flutterwave", name: "Flutterwave", logo: "🦋" },
-  { id: "korapay", name: "KoraPay", logo: "🔵" },
+  { id: "flutterwave", name: "Flutterwave", logo: flutterwaveLogo },
 ];
 
 const ProductDetail = () => {
@@ -25,7 +24,7 @@ const ProductDetail = () => {
   const { user } = useAuth();
   const product = products.find((p) => p.id === id);
   const [depositAmount, setDepositAmount] = useState(product ? product.minDeposit : 0);
-  const [selectedGateway, setSelectedGateway] = useState<Gateway>("paystack");
+  const [selectedGateway, setSelectedGateway] = useState<Gateway>("flutterwave");
   const [loadingPayment, setLoadingPayment] = useState(false);
 
   if (!product) {
@@ -76,7 +75,6 @@ const ProductDetail = () => {
       if (error) throw error;
 
       if (data?.payment_url) {
-        // Update callback URL with actual order_id
         const finalUrl = data.payment_url;
         window.location.href = finalUrl;
       } else {
@@ -144,20 +142,19 @@ const ProductDetail = () => {
 
               {/* Gateway Selection */}
               <div className="mb-6">
-                <p className="text-sm font-medium text-foreground mb-3">Select Payment Gateway</p>
-                <div className="grid grid-cols-3 gap-2">
+                <p className="text-sm font-medium text-foreground mb-3">Payment Gateway</p>
+                <div className="grid grid-cols-1 gap-2 max-w-xs">
                   {gatewayOptions.map((gw) => (
                     <button
                       key={gw.id}
                       onClick={() => setSelectedGateway(gw.id)}
-                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-sm font-medium ${
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
                         selectedGateway === gw.id
-                          ? "border-accent bg-accent/10 text-accent"
-                          : "border-border bg-card text-muted-foreground hover:border-accent/50"
+                          ? "border-accent bg-accent/10"
+                          : "border-border bg-card hover:border-accent/50"
                       }`}
                     >
-                      <span className="text-xl">{gw.logo}</span>
-                      <span className="text-xs">{gw.name}</span>
+                      <img src={gw.logo} alt={gw.name} className="h-6 w-auto object-contain" />
                     </button>
                   ))}
                 </div>

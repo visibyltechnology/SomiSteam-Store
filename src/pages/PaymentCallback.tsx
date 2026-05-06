@@ -14,7 +14,7 @@ const PaymentCallback = () => {
   useEffect(() => {
     const verify = async () => {
       const reference = searchParams.get("reference") || searchParams.get("tx_ref");
-      const gateway = searchParams.get("gateway") || "paystack";
+      const gateway = searchParams.get("gateway") || "flutterwave";
       const orderId = searchParams.get("order_id");
 
       if (!reference || !orderId) {
