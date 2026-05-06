@@ -1,21 +1,20 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { ArrowRight, ShoppingBag } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { products, formatPrice } from "@/data/products";
 
 const containerVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.12 } },
+  visible: { transition: { staggerChildren: 0.1 } },
 };
 
 const cardVariants = {
-  hidden: { opacity: 0, y: 80, scale: 0.9 },
+  hidden: { opacity: 0, y: 40 },
   visible: {
     opacity: 1,
     y: 0,
-    scale: 1,
-    transition: { duration: 0.7, ease: [0.215, 0.61, 0.355, 1] as const },
+    transition: { duration: 0.5, ease: [0.215, 0.61, 0.355, 1] as const },
   },
 };
 
@@ -58,56 +57,63 @@ const FeaturedProducts = () => {
           viewport={{ once: true, margin: "-80px" }}
           className="grid grid-cols-2 gap-3"
         >
-          {products.map((product) => (
-            <motion.div key={product.id} variants={cardVariants}>
-              <Link to={`/product/${product.id}`} className="group block">
-                <motion.div
-                  whileHover={{ y: -8 }}
-                  transition={{ duration: 0.3 }}
-                  className="bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 border border-border/50 hover:border-accent/30"
-                >
-                  <div className="relative aspect-square bg-secondary/50 p-6 overflow-hidden">
-                    <motion.img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-contain"
-                      whileHover={{ scale: 1.1, rotate: 2 }}
-                      transition={{ duration: 0.5 }}
-                      loading="lazy"
-                      width={800}
-                      height={800}
-                    />
-                    <motion.span
-                      initial={{ x: -60, opacity: 0 }}
-                      whileInView={{ x: 0, opacity: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: 0.3 }}
-                      className="absolute top-4 left-4 px-3 py-1 bg-accent text-accent-foreground text-xs font-semibold rounded-full"
-                    >
-                      {product.brand}
-                    </motion.span>
-                  </div>
-                  <div className="p-5">
-                    <p className="text-xs text-muted-foreground mb-1">{product.category}</p>
-                    <h3 className="font-display font-semibold text-foreground mb-3 line-clamp-2 group-hover:text-accent transition-colors">
-                      {product.name}
-                    </h3>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-lg font-bold text-foreground">{formatPrice(product.price)}</p>
-                        <p className="text-xs text-accent font-medium">EasyBuy Available</p>
+          {products.map((product) => {
+            const stockPct = Math.round((product.stockCount / product.totalStock) * 100);
+            return (
+              <motion.div key={product.id} variants={cardVariants}>
+                <Link to={`/product/${product.id}`} className="group block">
+                  <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100">
+                    {/* Image */}
+                    <div className="relative bg-gray-50 aspect-square overflow-hidden">
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                        loading="lazy"
+                        width={400}
+                        height={400}
+                      />
+                      {/* Discount badge */}
+                      {product.discount > 0 && (
+                        <span className="absolute top-2 right-2 bg-[#c0160c] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          -{product.discount}%
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="p-2.5">
+                      <p className="text-[11px] text-gray-500 font-medium mb-0.5">{product.brand}</p>
+                      <h3 className="text-[12px] font-medium text-gray-800 line-clamp-2 leading-snug mb-1.5">
+                        {product.name}
+                      </h3>
+                      <p className="text-[14px] font-bold text-gray-900 mb-0.5">
+                        {formatPrice(product.price)}
+                      </p>
+                      {product.originalPrice > product.price && (
+                        <p className="text-[11px] text-gray-400 line-through mb-1">
+                          {formatPrice(product.originalPrice)}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-gray-500 mb-1">
+                        {product.stockCount} items left
+                      </p>
+                      {/* Stock progress bar */}
+                      <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${stockPct}%`,
+                            background: stockPct < 30 ? "#c0160c" : stockPct < 60 ? "#f59e0b" : "#22c55e",
+                          }}
+                        />
                       </div>
-                      <motion.div whileHover={{ scale: 1.2, rotate: 15 }} whileTap={{ scale: 0.9 }}>
-                        <Button size="icon" variant="outline" className="rounded-full border-accent/30 text-accent hover:bg-accent hover:text-accent-foreground">
-                          <ShoppingBag className="w-4 h-4" />
-                        </Button>
-                      </motion.div>
                     </div>
                   </div>
-                </motion.div>
-              </Link>
-            </motion.div>
-          ))}
+                </Link>
+              </motion.div>
+            );
+          })}
         </motion.div>
 
         <div className="sm:hidden mt-8 text-center">
@@ -123,5 +129,3 @@ const FeaturedProducts = () => {
 };
 
 export default FeaturedProducts;
-
-
