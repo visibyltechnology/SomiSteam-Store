@@ -1,9 +1,7 @@
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { ShoppingBag } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { Button } from "@/components/ui/button";
 import { products, formatPrice } from "@/data/products";
 
 const Shop = () => {
@@ -15,54 +13,75 @@ const Shop = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-10"
+            className="mb-8"
           >
             <h1 className="text-3xl lg:text-5xl font-display font-bold text-foreground">Our Products</h1>
             <p className="text-muted-foreground mt-2">Premium electronics for your home</p>
           </motion.div>
 
           <div className="grid grid-cols-2 gap-3">
-            {products.map((product, index) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.08 }}
-              >
-                <Link to={`/product/${product.id}`} className="group block">
-                  <div className="bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 border border-border/50">
-                    <div className="relative aspect-square bg-secondary/50 p-6 overflow-hidden">
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
-                        loading="lazy"
-                        width={800}
-                        height={800}
-                      />
-                      <span className="absolute top-4 left-4 px-3 py-1 bg-accent text-accent-foreground text-xs font-semibold rounded-full">
-                        {product.brand}
-                      </span>
-                    </div>
-                    <div className="p-5">
-                      <p className="text-xs text-muted-foreground mb-1">{product.category}</p>
-                      <h3 className="font-display font-semibold text-foreground mb-3 line-clamp-2 group-hover:text-accent transition-colors">
-                        {product.name}
-                      </h3>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{formatPrice(product.price)}</p>
-                          <p className="text-xs text-accent font-medium">EasyBuy Available</p>
+            {products.map((product, index) => {
+              const stockPct = Math.round((product.stockCount / product.totalStock) * 100);
+              return (
+                <motion.div
+                  key={product.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.08 }}
+                >
+                  <Link to={`/product/${product.id}`} className="group block">
+                    <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100">
+                      {/* Image */}
+                      <div className="relative bg-gray-50 aspect-square overflow-hidden">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                          loading="lazy"
+                          width={400}
+                          height={400}
+                        />
+                        {/* Discount badge */}
+                        {product.discount > 0 && (
+                          <span className="absolute top-2 right-2 bg-[#c0160c] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            -{product.discount}%
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="p-2.5">
+                        <p className="text-[11px] text-gray-500 font-medium mb-0.5">{product.brand}</p>
+                        <h3 className="text-[12px] font-medium text-gray-800 line-clamp-2 leading-snug mb-1.5">
+                          {product.name}
+                        </h3>
+                        <p className="text-[14px] font-bold text-gray-900 mb-0.5">
+                          {formatPrice(product.price)}
+                        </p>
+                        {product.originalPrice > product.price && (
+                          <p className="text-[11px] text-gray-400 line-through mb-1">
+                            {formatPrice(product.originalPrice)}
+                          </p>
+                        )}
+                        <p className="text-[11px] text-gray-500 mb-1">
+                          {product.stockCount} items left
+                        </p>
+                        {/* Stock progress bar */}
+                        <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${stockPct}%`,
+                              background: stockPct < 30 ? "#c0160c" : stockPct < 60 ? "#f59e0b" : "#22c55e",
+                            }}
+                          />
                         </div>
-                        <Button size="icon" variant="outline" className="rounded-full border-accent/30 text-accent hover:bg-accent hover:text-accent-foreground">
-                          <ShoppingBag className="w-4 h-4" />
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+                  </Link>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -72,5 +91,3 @@ const Shop = () => {
 };
 
 export default Shop;
-
-
