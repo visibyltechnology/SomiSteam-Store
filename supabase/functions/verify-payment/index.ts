@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+      "authorization, x-client-info, apikey, content-type",
   };
 
   async function sendEmail(supabaseUrl: string, payload: object): Promise<void> {
@@ -24,27 +24,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
     }
 
     try {
-      const authHeader = req.headers.get("Authorization");
-      if (!authHeader?.startsWith("Bearer ")) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-      // Verify user JWT
       const supabase = createClient(supabaseUrl, serviceRoleKey);
-      const token = authHeader.replace("Bearer ", "");
-      const { data: userData, error: userError } = await supabase.auth.getUser(token);
-      if (userError || !userData?.user) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
 
       const { reference, gateway } = await req.json();
 
@@ -55,7 +37,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
         });
       }
 
-      // Read Flutterwave secret key from app_settings (set by admin) — same as initialize-payment
+      // Read Flutterwave secret key from app_settings (set by admin)
       const { data: settings } = await supabase
         .from("app_settings")
         .select("key, value")
@@ -72,7 +54,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
         "";
 
       if (!flutterwaveSecretKey) {
-        console.error("No Flutterwave secret key found in app_settings or env");
+        console.error("No Flutterwave secret key configured");
         return new Response(JSON.stringify({ error: "Payment gateway not configured" }), {
           status: 503,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -88,20 +70,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
           { headers: { Authorization: `Bearer ${flutterwaveSecretKey}` } }
         );
         const data = await res.json();
-        console.log("Flutterwave verify response status:", data.data?.status, "| tx_ref:", reference);
+        console.log("Flutterwave status:", data.data?.status, "| ref:", reference);
         verified = data.data?.status === "successful";
         amount = data.data?.amount || 0;
       }
 
       if (verified) {
-        // Look up order via payment reference — not from URL param (which was "PENDING")
+        // Look up the order via payment reference — reliable, no URL param dependency
         const { data: paymentRecord } = await supabase
           .from("payments")
-          .select("order_id")
+          .select("order_id, user_id")
           .eq("payment_reference", reference)
           .maybeSingle();
 
         const orderId = paymentRecord?.order_id;
+        const userId = paymentRecord?.user_id;
 
         // Mark payment as success
         await supabase
@@ -130,13 +113,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
               })
               .eq("id", order.id);
 
-            const { data: authUser } = await supabase.auth.admin.getUserById(order.user_id);
+            // Send confirmation email
+            const targetUserId = userId || order.user_id;
+            const { data: authUser } = await supabase.auth.admin.getUserById(targetUserId);
             const customerEmail = authUser?.user?.email;
 
             const { data: profile } = await supabase
               .from("profiles")
               .select("full_name")
-              .eq("user_id", order.user_id)
+              .eq("user_id", targetUserId)
               .single();
 
             const customerName = profile?.full_name || (customerEmail?.split("@")[0] ?? "there");
