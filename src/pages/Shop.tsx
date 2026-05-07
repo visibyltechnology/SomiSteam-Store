@@ -1,19 +1,27 @@
 import { motion, AnimatePresence } from "framer-motion";
   import { Link } from "react-router-dom";
   import { useState, useMemo } from "react";
-  import { Search, X } from "lucide-react";
+  import { Search, X, SlidersHorizontal } from "lucide-react";
   import Navbar from "@/components/Navbar";
   import Footer from "@/components/Footer";
+  import { Slider } from "@/components/ui/slider";
   import { products, formatPrice } from "@/data/products";
 
   const ALL = "All";
   const categories = [ALL, "Televisions", "Refrigerators", "Washing Machines", "Air Conditioners"];
   const brands = [ALL, "Hisense", "Samsung"];
 
+  const MIN_PRICE = 100000;
+  const MAX_PRICE = 500000;
+
   const Shop = () => {
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState(ALL);
     const [activeBrand, setActiveBrand] = useState(ALL);
+    const [priceRange, setPriceRange] = useState<[number, number]>([MIN_PRICE, MAX_PRICE]);
+    const [showPriceFilter, setShowPriceFilter] = useState(false);
+
+    const priceActive = priceRange[0] !== MIN_PRICE || priceRange[1] !== MAX_PRICE;
 
     const filtered = useMemo(() => {
       return products.filter((p) => {
@@ -23,17 +31,24 @@ import { motion, AnimatePresence } from "framer-motion";
           p.brand.toLowerCase().includes(query.toLowerCase());
         const matchCat = activeCategory === ALL || p.category === activeCategory;
         const matchBrand = activeBrand === ALL || p.brand === activeBrand;
-        return matchQuery && matchCat && matchBrand;
+        const matchPrice = p.price >= priceRange[0] && p.price <= priceRange[1];
+        return matchQuery && matchCat && matchBrand && matchPrice;
       });
-    }, [query, activeCategory, activeBrand]);
+    }, [query, activeCategory, activeBrand, priceRange]);
 
     const clearFilters = () => {
       setQuery("");
       setActiveCategory(ALL);
       setActiveBrand(ALL);
+      setPriceRange([MIN_PRICE, MAX_PRICE]);
+      setShowPriceFilter(false);
     };
 
-    const hasFilters = query.trim() || activeCategory !== ALL || activeBrand !== ALL;
+    const hasFilters =
+      query.trim() ||
+      activeCategory !== ALL ||
+      activeBrand !== ALL ||
+      priceActive;
 
     return (
       <div className="min-h-screen">
@@ -98,12 +113,12 @@ import { motion, AnimatePresence } from "framer-motion";
               </div>
             </motion.div>
 
-            {/* Brand Filter */}
+            {/* Brand + Price Row */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="mb-5 flex items-center gap-2"
+              className="mb-2 flex items-center gap-2 flex-wrap"
             >
               <span className="text-xs text-muted-foreground">Brand:</span>
               <div className="flex gap-2">
@@ -121,15 +136,63 @@ import { motion, AnimatePresence } from "framer-motion";
                   </button>
                 ))}
               </div>
+
+              {/* Price filter toggle */}
+              <button
+                onClick={() => setShowPriceFilter((v) => !v)}
+                className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                  priceActive || showPriceFilter
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border text-muted-foreground hover:border-accent/50"
+                }`}
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                {priceActive
+                  ? `${formatPrice(priceRange[0])} – ${formatPrice(priceRange[1])}`
+                  : "Price"}
+              </button>
+
               {hasFilters && (
                 <button
                   onClick={clearFilters}
-                  className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  <X className="w-3 h-3" /> Clear
+                  <X className="w-3 h-3" /> Clear all
                 </button>
               )}
             </motion.div>
+
+            {/* Price Range Slider — expands inline */}
+            <AnimatePresence>
+              {showPriceFilter && (
+                <motion.div
+                  key="price-slider"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden mb-4"
+                >
+                  <div className="bg-card border border-border rounded-2xl p-4">
+                    <div className="flex justify-between text-xs text-muted-foreground mb-3">
+                      <span>Min: <span className="font-semibold text-foreground">{formatPrice(priceRange[0])}</span></span>
+                      <span>Max: <span className="font-semibold text-foreground">{formatPrice(priceRange[1])}</span></span>
+                    </div>
+                    <Slider
+                      min={MIN_PRICE}
+                      max={MAX_PRICE}
+                      step={10000}
+                      value={priceRange}
+                      onValueChange={(val) => setPriceRange(val as [number, number])}
+                      className="mb-2"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+                      <span>{formatPrice(MIN_PRICE)}</span>
+                      <span>{formatPrice(MAX_PRICE)}</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Results count */}
             {hasFilters && (
@@ -148,17 +211,13 @@ import { motion, AnimatePresence } from "framer-motion";
                   exit={{ opacity: 0 }}
                   className="text-center py-16"
                 >
-                  <p className="text-muted-foreground text-sm">No products match your search.</p>
+                  <p className="text-muted-foreground text-sm">No products match your filters.</p>
                   <button onClick={clearFilters} className="mt-3 text-accent text-sm underline">
-                    Clear filters
+                    Clear all filters
                   </button>
                 </motion.div>
               ) : (
-                <motion.div
-                  key="grid"
-                  className="grid grid-cols-2 gap-3"
-                  layout
-                >
+                <motion.div key="grid" className="grid grid-cols-2 gap-3" layout>
                   {filtered.map((product, index) => (
                     <motion.div
                       key={product.id}
