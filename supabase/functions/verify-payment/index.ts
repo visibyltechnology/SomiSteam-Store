@@ -35,7 +35,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-      // Use service role client + getUser — same pattern as initialize-payment
+      // Verify user JWT
       const supabase = createClient(supabaseUrl, serviceRoleKey);
       const token = authHeader.replace("Bearer ", "");
       const { data: userData, error: userError } = await supabase.auth.getUser(token);
@@ -55,25 +55,46 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
         });
       }
 
+      // Read Flutterwave secret key from app_settings (set by admin) — same as initialize-payment
+      const { data: settings } = await supabase
+        .from("app_settings")
+        .select("key, value")
+        .eq("key", "flutterwave_secret_key");
+
+      const settingsMap: Record<string, string> = {};
+      (settings || []).forEach((s: { key: string; value: string }) => {
+        settingsMap[s.key] = s.value;
+      });
+
+      const flutterwaveSecretKey =
+        settingsMap["flutterwave_secret_key"] ||
+        Deno.env.get("FLUTTERWAVE_SECRET_KEY") ||
+        "";
+
+      if (!flutterwaveSecretKey) {
+        console.error("No Flutterwave secret key found in app_settings or env");
+        return new Response(JSON.stringify({ error: "Payment gateway not configured" }), {
+          status: 503,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       let verified = false;
       let amount = 0;
 
       if (gateway === "flutterwave") {
         const res = await fetch(
           `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${reference}`,
-          {
-            headers: {
-              Authorization: `Bearer ${Deno.env.get("FLUTTERWAVE_SECRET_KEY") || ""}`,
-            },
-          }
+          { headers: { Authorization: `Bearer ${flutterwaveSecretKey}` } }
         );
         const data = await res.json();
+        console.log("Flutterwave verify response status:", data.data?.status, "| tx_ref:", reference);
         verified = data.data?.status === "successful";
         amount = data.data?.amount || 0;
       }
 
       if (verified) {
-        // Look up the order via the payment reference (so we don't depend on order_id in URL)
+        // Look up order via payment reference — not from URL param (which was "PENDING")
         const { data: paymentRecord } = await supabase
           .from("payments")
           .select("order_id")
@@ -82,7 +103,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 
         const orderId = paymentRecord?.order_id;
 
-        // Update payment record status
+        // Mark payment as success
         await supabase
           .from("payments")
           .update({ status: "success" })
