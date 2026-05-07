@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, ShoppingBag, CreditCard, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ShoppingCart, CreditCard, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -170,7 +170,7 @@ const ProductDetail = () => {
                   {loadingPayment ? (
                     <Loader2 className="mr-2 w-5 h-5 animate-spin" />
                   ) : (
-                    <ShoppingBag className="mr-2 w-5 h-5" />
+                    <ShoppingCart className="mr-2 w-5 h-5" />
                   )}
                   Buy Now – {formatPrice(product.price)}
                 </Button>
