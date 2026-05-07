@@ -54,25 +54,32 @@ const ProductDetail = () => {
       const amount = type === "full_payment" ? product.price : depositAmount;
       const callbackUrl = `${window.location.origin}/payment/callback?gateway=${selectedGateway}`;
 
-      const { data, error } = await supabase.functions.invoke("initialize-payment", {
-        body: {
-          gateway: selectedGateway,
-          amount,
-          email: user.email,
-          product_id: product.id,
-          product_name: product.name,
-          product_price: product.price,
-          payment_type: type,
-          deposit_amount: type === "deposit" ? depositAmount : product.price,
-          interest_rate: type === "deposit" ? installment.interestRate : 0,
-          total_payable: type === "deposit" ? installment.totalPayable : product.price,
-          remaining_balance: type === "deposit" ? installment.balance : 0,
-          installment_months: type === "deposit" ? product.maxInstallmentMonths : 0,
-          callback_url: `${callbackUrl}&order_id=${encodeURIComponent("PENDING")}`,
-        },
-      });
-
-      if (error) throw error;
+      const _session = await supabase.auth.getSession();
+        const _token = _session.data.session?.access_token ?? "";
+        const _initRes = await fetch("https://afdgjlkivfhwqhjoaylg.supabase.co/functions/v1/initialize-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_token}` },
+          body: JSON.stringify({
+            gateway: selectedGateway,
+            amount,
+            email: user.email,
+            product_id: product.id,
+            product_name: product.name,
+            product_price: product.price,
+            payment_type: type,
+            deposit_amount: type === "deposit" ? depositAmount : product.price,
+            interest_rate: type === "deposit" ? installment.interestRate : 0,
+            total_payable: type === "deposit" ? installment.totalPayable : product.price,
+            remaining_balance: type === "deposit" ? installment.balance : 0,
+            installment_months: type === "deposit" ? product.maxInstallmentMonths : 0,
+            callback_url: callbackUrl,
+          }),
+        });
+        if (!_initRes.ok) {
+          const _errBody = await _initRes.json().catch(() => ({}));
+          throw new Error(_errBody.error || "Payment initialization failed. Please try again.");
+        }
+        const data = await _initRes.json();
 
       if (data?.payment_url) {
         const finalUrl = data.payment_url;
