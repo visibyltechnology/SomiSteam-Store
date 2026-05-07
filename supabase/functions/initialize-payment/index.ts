@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
         customizations: {
           title: "SomiSteam Ventures Ltd.",
           description: `Payment for ${product_name}`,
-          logo: "https://afdgjlkivfhwqhjoaylg.supabase.co/storage/v1/object/public/product-images/somisteam-logo.jpg",
+          logo: "https://somisteamelectronics.com/favicon.jpg",
         },
       }),
     });

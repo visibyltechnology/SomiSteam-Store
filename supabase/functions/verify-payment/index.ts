@@ -1,163 +1,111 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
-
-  const corsHeaders = {
+const CORS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
-
-  async function sendEmail(supabaseUrl: string, payload: object): Promise<void> {
-    try {
-      await fetch(`${supabaseUrl}/functions/v1/send-confirmation-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch (e) {
-      console.error("Email send failed (non-fatal):", e);
-    }
-  }
 
   Deno.serve(async (req) => {
     if (req.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: CORS });
     }
 
+    const SUPA_URL = Deno.env.get("SUPABASE_URL") ?? "";
+    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const headers = { "Content-Type": "application/json", "apikey": SERVICE_KEY, "Authorization": "Bearer " + SERVICE_KEY };
+
+    // Helper: Supabase REST GET
+    const dbGet = async (table, filter) => {
+      const url = SUPA_URL + "/rest/v1/" + table + "?" + filter + "&limit=1";
+      const r = await fetch(url, { headers });
+      const rows = await r.json();
+      return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    };
+
+    // Helper: Supabase REST PATCH
+    const dbPatch = async (table, filter, body) => {
+      const url = SUPA_URL + "/rest/v1/" + table + "?" + filter;
+      await fetch(url, { method: "PATCH", headers: { ...headers, "Prefer": "return=minimal" }, body: JSON.stringify(body) });
+    };
+
     try {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, serviceRoleKey);
-
       const { reference, gateway } = await req.json();
-
       if (!reference || !gateway) {
-        return new Response(JSON.stringify({ error: "Missing fields" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: "Missing reference or gateway" }), { status: 400, headers: { ...CORS, "Content-Type": "application/json" } });
       }
 
-      // Read Flutterwave secret key from app_settings (set by admin)
-      const { data: settings } = await supabase
-        .from("app_settings")
-        .select("key, value")
-        .eq("key", "flutterwave_secret_key");
+      // Get Flutterwave key from app_settings
+      const setting = await dbGet("app_settings", "key=eq.flutterwave_secret_key");
+      const flwKey = (setting && setting.value) ? setting.value : (Deno.env.get("FLUTTERWAVE_SECRET_KEY") ?? "");
 
-      const settingsMap: Record<string, string> = {};
-      (settings || []).forEach((s: { key: string; value: string }) => {
-        settingsMap[s.key] = s.value;
+      if (!flwKey) {
+        return new Response(JSON.stringify({ error: "Payment gateway not configured" }), { status: 503, headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+
+      // Verify with Flutterwave
+      const fwRes = await fetch("https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=" + encodeURIComponent(reference), {
+        headers: { "Authorization": "Bearer " + flwKey }
       });
+      const fw = await fwRes.json();
+      const verified = fw.data && fw.data.status === "successful";
+      const amount = verified ? Number(fw.data.amount || 0) : 0;
 
-      const flutterwaveSecretKey =
-        settingsMap["flutterwave_secret_key"] ||
-        Deno.env.get("FLUTTERWAVE_SECRET_KEY") ||
-        "";
+      console.log("ref:", reference, "flw_status:", fw.data?.status);
 
-      if (!flutterwaveSecretKey) {
-        console.error("No Flutterwave secret key configured");
-        return new Response(JSON.stringify({ error: "Payment gateway not configured" }), {
-          status: 503,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      if (!verified) {
+        return new Response(JSON.stringify({ verified: false }), { headers: { ...CORS, "Content-Type": "application/json" } });
       }
 
-      let verified = false;
-      let amount = 0;
+      // Find payment record
+      const payment = await dbGet("payments", "payment_reference=eq." + encodeURIComponent(reference));
+      const orderId = payment ? payment.order_id : null;
+      const userId = payment ? payment.user_id : null;
 
-      if (gateway === "flutterwave") {
-        const res = await fetch(
-          `https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${reference}`,
-          { headers: { Authorization: `Bearer ${flutterwaveSecretKey}` } }
-        );
-        const data = await res.json();
-        console.log("Flutterwave status:", data.data?.status, "| ref:", reference);
-        verified = data.data?.status === "successful";
-        amount = data.data?.amount || 0;
-      }
+      // Mark payment success
+      await dbPatch("payments", "payment_reference=eq." + encodeURIComponent(reference), { status: "success" });
 
-      if (verified) {
-        // Look up the order via payment reference — reliable, no URL param dependency
-        const { data: paymentRecord } = await supabase
-          .from("payments")
-          .select("order_id, user_id")
-          .eq("payment_reference", reference)
-          .maybeSingle();
+      if (orderId) {
+        const order = await dbGet("orders", "id=eq." + orderId);
+        if (order) {
+          const newTotalPaid = Number(order.total_paid) + amount;
+          const newBalance = Math.max(0, Number(order.total_payable) - newTotalPaid);
+          const newStatus = newBalance <= 0 ? "fully_paid" : "deposit_paid";
 
-        const orderId = paymentRecord?.order_id;
-        const userId = paymentRecord?.user_id;
+          await dbPatch("orders", "id=eq." + orderId, {
+            total_paid: newTotalPaid,
+            remaining_balance: newBalance,
+            status: newStatus,
+          });
 
-        // Mark payment as success
-        await supabase
-          .from("payments")
-          .update({ status: "success" })
-          .eq("payment_reference", reference);
+          // Send email via sister function (fire and forget)
+          const targetUserId = userId || order.user_id;
+          const authRes = await fetch(SUPA_URL + "/auth/v1/admin/users/" + targetUserId, {
+            headers: { "apikey": SERVICE_KEY, "Authorization": "Bearer " + SERVICE_KEY }
+          });
+          const authUser = await authRes.json();
+          const customerEmail = authUser && authUser.email ? authUser.email : null;
 
-        if (orderId) {
-          const { data: order } = await supabase
-            .from("orders")
-            .select("*")
-            .eq("id", orderId)
-            .single();
-
-          if (order) {
-            const newTotalPaid = Number(order.total_paid) + amount;
-            const newBalance = Number(order.total_payable) - newTotalPaid;
-            const isFullyPaid = newBalance <= 0;
-
-            await supabase
-              .from("orders")
-              .update({
-                total_paid: newTotalPaid,
-                remaining_balance: Math.max(0, newBalance),
-                status: isFullyPaid ? "fully_paid" : "deposit_paid",
-              })
-              .eq("id", order.id);
-
-            // Send confirmation email
-            const targetUserId = userId || order.user_id;
-            const { data: authUser } = await supabase.auth.admin.getUserById(targetUserId);
-            const customerEmail = authUser?.user?.email;
-
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("full_name")
-              .eq("user_id", targetUserId)
-              .single();
-
-            const customerName = profile?.full_name || (customerEmail?.split("@")[0] ?? "there");
-
-            if (customerEmail) {
-              sendEmail(supabaseUrl, {
+          if (customerEmail) {
+            fetch(SUPA_URL + "/functions/v1/send-confirmation-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SERVICE_KEY },
+              body: JSON.stringify({
                 type: "payment_received",
                 email: customerEmail,
-                name: customerName,
-                data: {
-                  amount,
-                  reference,
-                  product_name: order.product_name,
-                  remaining_balance: Math.max(0, newBalance),
-                },
-              });
-            }
+                name: customerEmail.split("@")[0],
+                data: { amount, reference, product_name: order.product_name, remaining_balance: newBalance },
+              }),
+            }).catch(() => {});
           }
         }
-
-        return new Response(
-          JSON.stringify({ verified: true, amount, order_id: orderId }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
       }
 
-      return new Response(
-        JSON.stringify({ verified: false }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    } catch (error) {
-      console.error("Verify error:", error);
-      return new Response(JSON.stringify({ error: "Verification failed" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({ verified: true, amount, order_id: orderId }), {
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+
+    } catch (err) {
+      console.error("verify error:", err.message);
+      return new Response(JSON.stringify({ error: "Verification failed", detail: String(err.message) }), {
+        status: 500, headers: { ...CORS, "Content-Type": "application/json" },
       });
     }
   });
-  
