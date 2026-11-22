@@ -217,13 +217,19 @@ const AdminDashboard = () => {
     }
     setMigratingProducts(true);
     try {
+      toast.info("Connecting to the existing product catalogue…");
       const [{ data: legacyProducts, error }, existingProducts] = await Promise.all([
-        supabase.from("products").select("*").order("created_at", { ascending: true }),
+        supabase.from("products").select("*").order("created_at", { ascending: true }).abortSignal(AbortSignal.timeout(20000)),
         getStoreProducts(),
       ]);
       if (error) throw error;
       const migratedIds = new Set(existingProducts.map((product) => product.legacySupabaseId).filter(Boolean));
       const pending = (legacyProducts || []).filter((product) => !migratedIds.has(product.id));
+      if (pending.length === 0) {
+        toast.success("No new products to migrate. All products in the old catalogue are already migrated.");
+        return;
+      }
+      toast.info("Found " + pending.length + " products. Starting migration…");
       let migrated = 0;
       const failures: string[] = [];
 
@@ -233,7 +239,7 @@ const AdminDashboard = () => {
           const images: string[] = [];
           for (const source of sourceImages) {
             if (!source) continue;
-            const response = await fetch(source);
+            const response = await fetch(source, { signal: AbortSignal.timeout(15000) });
             if (!response.ok) throw new Error("An existing product image could not be downloaded.");
             const blob = await response.blob();
             const file = new File([blob], `legacy-${product.id}.jpg`, { type: blob.type || "image/jpeg" });
@@ -268,7 +274,11 @@ const AdminDashboard = () => {
         toast.success(migrated ? `Successfully migrated ${migrated} existing products to Firestore.` : "All existing products have already been migrated.");
       }
     } catch (migrationError) {
-      toast.error(migrationError instanceof Error ? migrationError.message : "Product migration failed.");
+      console.error("Product migration failed:", migrationError);
+      const message = migrationError instanceof Error ? migrationError.message : "Product migration failed."; 
+      toast.error(message.includes("Timeout") || message.includes("aborted")
+        ? "The old product catalogue did not respond within 20 seconds. No products were deleted. Please retry after the source connection is restored."
+        : message);
     } finally {
       setMigratingProducts(false);
     }
