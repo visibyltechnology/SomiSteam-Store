@@ -30,6 +30,7 @@ export interface StoreProduct {
   stockCount: number;
   totalStock: number;
   createdAt?: unknown;
+  legacySupabaseId?: string;
 }
 
 type ProductInput = Omit<StoreProduct, "id" | "image" | "discount"> & {
