@@ -585,7 +585,18 @@ const AdminDashboard = () => {
                           accept="image/*"
                           className="hidden"
                           onChange={e => {
-                            if (e.target.files) setProductImages(Array.from(e.target.files));
+                            if (e.target.files) {
+                              const selected = Array.from(e.target.files);
+                              setProductImages((previous) => {
+                                const combined = [...previous, ...selected];
+                                if (combined.length > 4) {
+                                  toast.error("You can upload a maximum of 4 photos per product.");
+                                  return combined.slice(0, 4);
+                                }
+                                return combined;
+                              });
+                              e.currentTarget.value = "";
+                            }
                           }}
                         />
                         <div
@@ -594,7 +605,7 @@ const AdminDashboard = () => {
                         >
                           <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
                           <p className="text-sm text-muted-foreground">Click to upload images</p>
-                          <p className="text-[10px] text-muted-foreground mt-1">PNG, JPG up to 5MB each</p>
+                          <p className="text-[10px] text-muted-foreground mt-1">Select up to 4 photos. You can add photos in multiple selections.</p>
                         </div>
                         {productImages.length > 0 && (
                           <div className="flex gap-2 mt-3 flex-wrap">
