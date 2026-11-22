@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { firebaseAuth } from "@/integrations/firebase/client";
 import somisteamLogo from "@/assets/somisteam-logo.jpg";
 
 const Login = () => {
@@ -60,6 +62,12 @@ const Login = () => {
     if (error) {
       toast.error(error.message);
     } else {
+      // Firebase is used for Firestore permissions; legacy Supabase auth remains active for existing orders and payment processing.
+      try {
+        await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      } catch (firebaseError) {
+        console.warn("Firebase sign-in is not yet available for this account:", firebaseError);
+      }
       const { data: { user } } = await supabase.auth.getUser();
       const userName = user?.user_metadata?.full_name || email.split("@")[0];
       sendLoginAlert(email, userName);
