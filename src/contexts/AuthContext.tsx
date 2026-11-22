@@ -1,8 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { onAuthStateChanged, signOut as firebaseSignOut, User as FirebaseUser } from "firebase/auth";
-import { firebaseAuth } from "@/integrations/firebase/client";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  updateProfile,
+  User as FirebaseUser,
+} from "firebase/auth";
+import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { firebaseAuth, firestore } from "@/integrations/firebase/client";
 
 const ADMIN_EMAIL = "somisteamventures@gmail.com";
 
@@ -14,7 +20,7 @@ export interface AppUser {
 
 interface AuthContextType {
   user: AppUser | null;
-  session: Session | null;
+  session: null;
   loading: boolean;
   isAdmin: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
@@ -32,110 +38,63 @@ const fromFirebaseUser = (user: FirebaseUser): AppUser => ({
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      if (nextSession?.user) {
-        const supaUser = nextSession.user;
-        setUser({
-          id: supaUser.id,
-          email: supaUser.email || null,
-          user_metadata: {
-            full_name: supaUser.user_metadata?.full_name,
-            name: supaUser.user_metadata?.name,
-          },
-        });
-        setIsAdmin((supaUser.email || "").toLowerCase() === ADMIN_EMAIL);
-      } else if (!firebaseAuth.currentUser) {
-        setUser(null);
-        setIsAdmin(false);
-      }
-    });
-
-    const unsubscribeFirebase = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
-      if (firebaseUser && !session) {
-        setUser(fromFirebaseUser(firebaseUser));
-        setIsAdmin((firebaseUser.email || "").toLowerCase() === ADMIN_EMAIL);
-      } else if (!firebaseUser && !session) {
-        setUser(null);
-        setIsAdmin(false);
-      }
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+      setUser(firebaseUser ? fromFirebaseUser(firebaseUser) : null);
+      setIsAdmin((firebaseUser?.email || "").toLowerCase() === ADMIN_EMAIL);
       setLoading(false);
     });
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        const supaUser = data.session.user;
-        setSession(data.session);
-        setUser({
-          id: supaUser.id,
-          email: supaUser.email || null,
-          user_metadata: { full_name: supaUser.user_metadata?.full_name },
-        });
-        setIsAdmin((supaUser.email || "").toLowerCase() === ADMIN_EMAIL);
-      }
-      setLoading(false);
-    }).catch(() => setLoading(false));
-
-    return () => {
-      subscription.unsubscribe();
-      unsubscribeFirebase();
-    };
+    return unsubscribe;
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      await updateProfile(credential.user, { displayName: fullName.trim() });
+      await setDoc(doc(firestore, "users", credential.user.uid), {
+        email: email.trim().toLowerCase(),
+        fullName: fullName.trim(),
+        role: "customer",
+        createdAt: serverTimestamp(),
       });
-      return { error: error as Error | null };
+      return { error: null };
     } catch (error) {
       return { error: error instanceof Error ? error : new Error("Unable to create account") };
     }
   };
 
-  // Firebase is the primary sign-in system. Supabase is optional legacy access for existing orders/payments.
   const signIn = async (email: string, password: string) => {
     try {
-      const credential = await (await import("firebase/auth")).signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
       setUser(fromFirebaseUser(credential.user));
       setIsAdmin((credential.user.email || "").toLowerCase() === ADMIN_EMAIL);
-      setLoading(false);
-
-      // Keep the legacy Supabase session when available, but never block Firebase login on it.
-      try {
-        await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      } catch (legacyError) {
-        console.warn("Legacy Supabase sign-in unavailable; Firebase sign-in succeeded.", legacyError);
-      }
       return { error: null };
-    } catch (firebaseError) {
-      // Existing legacy customers can still sign in if their account has not yet been added to Firebase.
-      try {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (!error) return { error: null };
-        return { error: firebaseError instanceof Error ? firebaseError : error as Error };
-      } catch {
-        return { error: firebaseError instanceof Error ? firebaseError : new Error("Sign-in failed. Please check your email and password.") };
-      }
+    } catch (error) {
+      const firebaseError = error as { code?: string; message?: string };
+      const messages: Record<string, string> = {
+        "auth/invalid-credential": "The email or password is incorrect.",
+        "auth/user-not-found": "No Firebase account exists for this email.",
+        "auth/wrong-password": "The password is incorrect.",
+        "auth/too-many-requests": "Too many attempts. Please wait and try again.",
+        "auth/network-request-failed": "Connection problem. Check your internet and try again.",
+        "auth/invalid-api-key": "Firebase configuration is invalid. Please contact support.",
+        "auth/unauthorized-domain": "This website domain is not authorised in Firebase Authentication.",
+      };
+      return { error: new Error(messages[firebaseError.code || ""] || firebaseError.message || "Unable to sign in.") };
     }
   };
 
   const signOut = async () => {
-    await Promise.allSettled([supabase.auth.signOut(), firebaseSignOut(firebaseAuth)]);
+    await firebaseSignOut(firebaseAuth);
     setUser(null);
-    setSession(null);
     setIsAdmin(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, isAdmin, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session: null, loading, isAdmin, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
