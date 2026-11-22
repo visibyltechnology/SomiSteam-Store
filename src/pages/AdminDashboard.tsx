@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatPrice } from "@/data/products";
+import { smartChoiceProducts } from "@/data/smartChoiceImport";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -213,6 +214,48 @@ const AdminDashboard = () => {
       toast.error(error instanceof Error ? error.message : "Could not save product.");
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const importSmartChoiceProducts = async () => {
+    if (!firebaseAuth.currentUser) {
+      toast.error("Please sign in with the Firebase admin account first.");
+      return;
+    }
+    setMigratingProducts(true);
+    try {
+      const existing = await getStoreProducts();
+      const importedIds = new Set(existing.map((item) => item.legacySupabaseId).filter(Boolean));
+      const pending = smartChoiceProducts.filter((item, index) => !importedIds.has("smartchoice-" + index));
+      if (!pending.length) {
+        toast.success("Smart Choice catalogue has already been imported.");
+        return;
+      }
+      setMigrationProgress({ done: 0, total: pending.length });
+      let completed = 0;
+      for (const [index, item] of smartChoiceProducts.entries()) {
+        const [name, category, sourcePrice] = item;
+        const marker = "smartchoice-" + index;
+        if (importedIds.has(marker)) continue;
+        await createStoreProduct({
+          name, brand: "Hisense", category,
+          description: "Product sourced from Smart Choice Electronics Group. Price includes SomiSteam's ₦5,000 markup. Confirm current availability before purchase.",
+          price: sourcePrice + 5000, originalPrice: sourcePrice + 5000, images: [], features: [],
+          available: true, minDeposit: Math.round((sourcePrice + 5000) * 0.3),
+          maxInstallmentMonths: 6, stockCount: 0, totalStock: 0,
+          legacySupabaseId: marker,
+        });
+        importedIds.add(marker);
+        completed += 1;
+        setMigrationProgress({ done: completed, total: pending.length });
+      }
+      await fetchData();
+      toast.success("Imported " + completed + " Smart Choice products with ₦5,000 added to each price.");
+    } catch (error) {
+      console.error("Smart Choice import failed:", error);
+      toast.error(error instanceof Error ? error.message : "Could not import Smart Choice products.");
+    } finally {
+      setMigratingProducts(false);
     }
   };
 
@@ -569,7 +612,7 @@ const AdminDashboard = () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
                 </div>
-                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
+                <Button variant="outline" onClick={importSmartChoiceProducts} disabled={migratingProducts} className="rounded-xl">\n                  <Plus className="mr-2 w-4 h-4" /> Import Smart Choice + ₦5,000\n                </Button>\n                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
                   <RefreshCw className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-spin" : ""}`} />
                   {migratingProducts ? (migrationProgress.total ? "Migrating " + migrationProgress.done + "/" + migrationProgress.total : "Connecting to old catalogue...") : "Migrate Existing Products"}
                 </Button>
