@@ -112,6 +112,7 @@ const AdminDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
   const [migratingProducts, setMigratingProducts] = useState(false);
+  const [migrationProgress, setMigrationProgress] = useState({ done: 0, total: 0 });
   const [productImages, setProductImages] = useState<File[]>([]);
   const [editingProduct, setEditingProduct] = useState<DBProduct | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
@@ -234,6 +235,7 @@ const AdminDashboard = () => {
         toast.success("No new products to migrate. All products in the old catalogue are already migrated.");
         return;
       }
+      setMigrationProgress({ done: 0, total: pending.length });
       toast.info("Found " + pending.length + " products. Starting migration…");
       let migrated = 0;
       const failures: string[] = [];
@@ -241,15 +243,13 @@ const AdminDashboard = () => {
       for (const product of pending) {
         try {
           const sourceImages = Array.isArray(product.images) ? product.images.slice(0, 4) : [];
-          const images: string[] = [];
-          for (const source of sourceImages) {
-            if (!source) continue;
-            const response = await fetch(source, { signal: AbortSignal.timeout(15000) });
+          const images = await Promise.all(sourceImages.filter(Boolean).map(async (source: string, index: number) => {
+            const response = await fetch(source, { signal: AbortSignal.timeout(10000), mode: "cors" });
             if (!response.ok) throw new Error("An existing product image could not be downloaded.");
             const blob = await response.blob();
-            const file = new File([blob], `legacy-${product.id}.jpg`, { type: blob.type || "image/jpeg" });
-            images.push(await compressProductImage(file));
-          }
+            const file = new File([blob], "legacy-" + product.id + "-" + index + ".jpg", { type: blob.type || "image/jpeg" });
+            return compressProductImage(file);
+          }));
           await createStoreProduct({
             name: product.name,
             brand: product.brand || "Other",
@@ -268,7 +268,9 @@ const AdminDashboard = () => {
           });
           migrated += 1;
         } catch (migrationError) {
-          failures.push(`${product.name}: ${migrationError instanceof Error ? migrationError.message : "migration failed"}`);
+          failures.push(product.name + ": " + (migrationError instanceof Error ? migrationError.message : "migration failed"));
+        } finally {
+          setMigrationProgress((progress) => ({ ...progress, done: progress.done + 1 }));
         }
       }
 
