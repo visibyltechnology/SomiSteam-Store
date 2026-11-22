@@ -9,6 +9,7 @@ import {
   Settings, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client"; // One-time legacy product import only; dashboard reads Firebase.
 import { firebaseAuth } from "@/integrations/firebase/client";
 import { compressProductImage, createStoreProduct, getStoreProducts, removeStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
