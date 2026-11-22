@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { compressProductImage, createStoreProduct, getStoreProducts, removeStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,13 +139,26 @@ const AdminDashboard = () => {
   }, [user, isAdmin, authLoading]);
 
   const fetchData = async () => {
-    const [productsRes, ordersRes, paymentsRes, customersRes] = await Promise.all([
-      supabase.from("products").select("*").order("created_at", { ascending: false }),
+    const [firestoreProducts, ordersRes, paymentsRes, customersRes] = await Promise.all([
+      getStoreProducts(),
       supabase.from("orders").select("*").order("created_at", { ascending: false }),
       supabase.from("payments").select("*").order("created_at", { ascending: false }),
       supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     ]);
-    if (productsRes.data) setProducts(productsRes.data);
+    setProducts(firestoreProducts.map((product) => ({
+      id: product.id,
+      name: product.name,
+      brand: product.brand,
+      category: product.category,
+      description: product.description || null,
+      price: product.price,
+      min_deposit: product.minDeposit,
+      max_installment_months: product.maxInstallmentMonths,
+      features: product.features,
+      images: product.images,
+      available: product.available,
+      created_at: product.createdAt instanceof Date ? product.createdAt.toISOString() : new Date().toISOString(),
+    })));
     if (ordersRes.data) setOrders(ordersRes.data);
     if (paymentsRes.data) setPayments(paymentsRes.data);
     if (customersRes.data) setCustomers(customersRes.data);
@@ -179,58 +193,53 @@ const AdminDashboard = () => {
   };
 
   const handleImageUpload = async (files: File[]): Promise<string[]> => {
-    const urls: string[] = [];
-    for (const file of files) {
-      const ext = file.name.split(".").pop();
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("product-images").upload(path, file);
-      if (error) {
-        toast.error(`Failed to upload ${file.name}`);
-        continue;
-      }
-      const { data: urlData } = supabase.storage.from("product-images").getPublicUrl(path);
-      urls.push(urlData.publicUrl);
-    }
-    return urls;
+    if (files.length > 4) throw new Error("You can add up to 4 images per product.");
+    return Promise.all(files.map(compressProductImage));
   };
 
   const handleAddProduct = async () => {
-    if (!newProduct.name || !newProduct.price) {
+    if (!newProduct.name.trim() || !newProduct.price) {
       toast.error("Name and price are required");
       return;
     }
     setUploadingImage(true);
-    let imageUrls: string[] = [];
-    if (productImages.length > 0) {
-      imageUrls = await handleImageUpload(productImages);
-    }
-    const { error } = await supabase.from("products").insert({
-      name: newProduct.name,
-      brand: newProduct.brand,
-      category: newProduct.category,
-      description: newProduct.description || null,
-      price: Number(newProduct.price),
-      min_deposit: Number(newProduct.min_deposit) || 0,
-      max_installment_months: Number(newProduct.max_installment_months) || 6,
-      features: newProduct.features.split(",").map((f) => f.trim()).filter(Boolean),
-      images: imageUrls.length > 0 ? imageUrls : null,
-    });
-    setUploadingImage(false);
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Product added successfully!");
+    try {
+      const imageUrls = await handleImageUpload(productImages);
+      await createStoreProduct({
+        name: newProduct.name.trim(),
+        brand: newProduct.brand,
+        category: newProduct.category,
+        description: newProduct.description || "",
+        price: Number(newProduct.price),
+        originalPrice: Number(newProduct.price),
+        images: imageUrls,
+        features: newProduct.features.split(",").map((feature) => feature.trim()).filter(Boolean),
+        available: true,
+        minDeposit: Number(newProduct.min_deposit) || 0,
+        maxInstallmentMonths: Number(newProduct.max_installment_months) || 6,
+        stockCount: 0,
+        totalStock: 0,
+      });
+      toast.success("Product added to Firestore successfully!");
       setShowAddProduct(false);
       setNewProduct({ name: "", brand: "Hisense", category: "Televisions", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
       setProductImages([]);
-      fetchData();
+      await fetchData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save product.");
+    } finally {
+      setUploadingImage(false);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) toast.error(error.message);
-    else { toast.success("Product deleted"); fetchData(); }
+    try {
+      await removeStoreProduct(id);
+      toast.success("Product deleted");
+      await fetchData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete product.");
+    }
   };
 
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
