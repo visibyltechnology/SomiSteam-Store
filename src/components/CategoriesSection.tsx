@@ -12,6 +12,8 @@ const fallbackImages: Record<string, string> = {
   Refrigerators: fridgeImage,
   "Washing Machines": washerImage,
   "Air Conditioners": acImage,
+  Microwaves: "https://commons.wikimedia.org/wiki/Special:FilePath/Microwave_oven2.jpg",
+  Generators: "https://c.pxhere.com/photos/4b/6a/diesel_generators_generator_izmit_power_systems-1036556.jpg!d",
 };
 
 const CategoriesSection = () => {
@@ -29,12 +31,12 @@ const CategoriesSection = () => {
             const actualImage = products.find((product) => product.category === cat.name && product.image)?.image || fallbackImages[cat.name];
             return (
               <motion.div key={cat.name} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * 0.05 }}>
-                <Link to={`/shop?category=${encodeURIComponent(cat.name)}`} className="group relative flex min-h-[132px] md:min-h-[150px] items-end overflow-hidden rounded-xl border border-slate-200 bg-slate-200 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
-                  {actualImage && <img src={actualImage} alt={cat.name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/25 to-transparent" />
-                  <div className="relative z-10 p-3 text-left">
-                    <h3 className="text-sm md:text-base font-semibold text-white drop-shadow">{cat.name}</h3>
-                    <p className="text-[11px] md:text-xs text-white/80 mt-0.5">{cat.count} products</p>
+                <Link to={`/shop?category=${encodeURIComponent(cat.name)}`} className="group relative flex min-h-[66px] md:min-h-[75px] items-end overflow-hidden rounded-lg border border-slate-200 bg-slate-200 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
+                  {actualImage && <img src={actualImage} alt={cat.name} className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105" loading="lazy" />}
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-slate-950/5" />
+                  <div className="relative z-10 p-2 text-left">
+                    <h3 className="text-xs md:text-sm font-semibold text-white drop-shadow">{cat.name}</h3>
+                    <p className="text-[10px] md:text-[11px] text-white/85 mt-0.5">{cat.count} products</p>
                   </div>
                 </Link>
               </motion.div>
