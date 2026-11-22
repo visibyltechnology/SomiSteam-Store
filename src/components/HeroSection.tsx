@@ -1,209 +1,72 @@
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Shield, Truck, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import heroImage from "@/assets/hero-showroom.jpg";
-import { useRef } from "react";
+import { useEffect, useState } from "react";
+import tvImage from "@/assets/product-tv.jpg";
+import fridgeImage from "@/assets/product-fridge.jpg";
+import washerImage from "@/assets/product-washer.jpg";
+import acImage from "@/assets/product-ac.jpg";
 
-const letterVariants = {
-  hidden: { opacity: 0, y: 50, rotateX: -90 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    rotateX: 0,
-    transition: {
-      delay: 0.4 + i * 0.04,
-      duration: 0.6,
-      ease: [0.215, 0.61, 0.355, 1] as const,
-    },
-  }),
-};
-
-const floatingParticles = Array.from({ length: 20 }, (_, i) => ({
-  id: i,
-  x: Math.random() * 100,
-  y: Math.random() * 100,
-  size: Math.random() * 4 + 2,
-  duration: Math.random() * 8 + 6,
-  delay: Math.random() * 4,
-}));
+const slides = [
+  { image: tvImage, label: "Smart televisions", title: "Entertainment, Elevated" },
+  { image: fridgeImage, label: "Premium refrigerators", title: "Freshness That Lasts" },
+  { image: washerImage, label: "Modern washing machines", title: "Everyday Care, Made Easy" },
+  { image: acImage, label: "Powerful air conditioners", title: "Comfort in Every Season" },
+];
 
 const HeroSection = () => {
-  const ref = useRef(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "30%"]);
-  const textY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
-  const opacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
-
-  const title1 = "Elevate Your";
-  const title2 = "Home Living";
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setActive((v) => (v + 1) % slides.length), 4500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
-    <section ref={ref} className="relative min-h-screen flex items-center overflow-hidden">
-      {/* Parallax Background */}
-      <motion.div className="absolute inset-0" style={{ y: bgY }}>
-        <img
-          src={heroImage}
-          alt="SomiSteam Ventures Ltd. Showroom"
-          className="w-full h-full object-cover scale-110"
-          width={1920}
-          height={1080}
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-[hsl(0,85%,28%)]/95 via-[hsl(0,85%,28%)]/85 to-[hsl(0,85%,28%)]/50" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[hsl(0,85%,20%)]/60 via-transparent to-transparent" />
-      </motion.div>
+    <section className="relative isolate min-h-[430px] md:min-h-[500px] flex items-center overflow-hidden bg-slate-950">
+      <AnimatePresence mode="wait">
+        <motion.div key={active} className="absolute inset-0 -z-20" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1 }}>
+          <img src={slides[active].image} alt={slides[active].label} className="w-full h-full object-cover object-center" />
+        </motion.div>
+      </AnimatePresence>
+      <div className="absolute inset-0 -z-10 bg-gradient-to-r from-slate-950/90 via-slate-900/65 to-slate-900/20" />
+      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-slate-950/45 via-transparent to-slate-950/10" />
 
-      {/* Floating Particles */}
-      {floatingParticles.map((p) => (
-        <motion.div
-          key={p.id}
-          className="absolute rounded-full bg-white/10"
-          style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size }}
-          animate={{ y: [-20, 20, -20], x: [-10, 10, -10], opacity: [0.1, 0.4, 0.1] }}
-          transition={{ duration: p.duration, repeat: Infinity, delay: p.delay, ease: "easeInOut" }}
-        />
-      ))}
-
-      {/* Glowing Orb */}
-      <motion.div
-        className="absolute w-[600px] h-[600px] rounded-full blur-[120px] opacity-20"
-        style={{ background: "radial-gradient(circle, rgba(255,255,255,0.15), transparent 70%)", right: "-10%", top: "10%" }}
-        animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }}
-        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-      />
-
-      <motion.div style={{ y: textY, opacity }} className="relative container mx-auto px-4 lg:px-8 pt-24 pb-16">
-        <div className="max-w-2xl">
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, filter: "blur(10px)" }}
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-          >
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white/90 text-sm font-medium mb-6 border border-white/20">
-              Premium Home Electronics
-            </span>
-          </motion.div>
-
-          {/* Animated Title - Line 1 */}
-          <h1 className="text-4xl md:text-5xl lg:text-7xl font-display font-bold leading-tight mb-2">
-            <span className="text-white inline-block overflow-hidden">
-              {title1.split("").map((char, i) => (
-                <motion.span
-                  key={`t1-${i}`}
-                  custom={i}
-                  variants={letterVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="inline-block"
-                  style={{ display: char === " " ? "inline" : "inline-block" }}
-                >
-                  {char === " " ? "\u00A0" : char}
-                </motion.span>
-              ))}
-            </span>
-            <br />
-            {/* Line 2 — white with slight warmth to stand out from line 1 */}
-            <span className="inline-block overflow-hidden" style={{ color: "#FFD6D6" }}>
-              {title2.split("").map((char, i) => (
-                <motion.span
-                  key={`t2-${i}`}
-                  custom={i + title1.length}
-                  variants={letterVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="inline-block"
-                  style={{ display: char === " " ? "inline" : "inline-block" }}
-                >
-                  {char === " " ? "\u00A0" : char}
-                </motion.span>
-              ))}
-            </span>
-          </h1>
-
-          {/* Animated underline */}
-          <motion.div
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ delay: 1.2, duration: 0.8, ease: [0.215, 0.61, 0.355, 1] }}
-            className="h-1 w-24 bg-white/60 rounded-full origin-left mb-6"
-          />
-
-          <motion.p
-            initial={{ opacity: 0, y: 30, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, delay: 1 }}
-            className="text-lg md:text-xl text-white/75 mb-8 max-w-lg"
-          >
-            Discover premium electronics from Hisense, Samsung, LG and more.
-            Buy outright or use our flexible EasyBuy installment plan.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.2 }}
-            className="flex flex-wrap gap-4 mb-12"
-          >
+      <div className="container mx-auto w-full px-4 lg:px-8 pt-20 pb-10 md:pt-24 md:pb-14">
+        <div className="max-w-xl">
+          <span className="inline-flex items-center rounded-full border border-white/25 bg-black/25 px-3 py-1.5 text-xs md:text-sm font-medium text-white mb-4">
+            {slides[active].label}
+          </span>
+          <AnimatePresence mode="wait">
+            <motion.h1 key={active} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.45 }} className="text-3xl sm:text-4xl md:text-6xl font-display font-bold leading-tight text-white mb-4">
+              {slides[active].title}
+            </motion.h1>
+          </AnimatePresence>
+          <p className="text-sm md:text-lg text-white/85 leading-relaxed max-w-lg mb-5">
+            Discover quality electronics from Hisense, Samsung, LG and more. Shop with confidence or spread payments with our EasyBuy plan.
+          </p>
+          <div className="flex flex-wrap gap-3 mb-6">
             <Link to="/shop">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button className="bg-white text-accent font-semibold px-8 py-6 text-base rounded-xl hover:bg-white/90 transition-opacity shadow-lg">
-                  Shop Now
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-              </motion.div>
+              <Button className="bg-white text-slate-900 hover:bg-gray-100 font-semibold px-6 py-4 rounded-lg shadow-lg">
+                Shop Now <ArrowRight className="ml-2 w-4 h-4" />
+              </Button>
             </Link>
             <Link to="/easybuy">
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" className="border-white/40 text-white px-8 py-6 text-base rounded-xl hover:bg-white/10 bg-transparent">
-                  EasyBuy Plans
-                </Button>
-              </motion.div>
+              <Button variant="outline" className="border-white/60 text-white hover:bg-white/15 bg-black/10 px-6 py-4 rounded-lg">
+                EasyBuy Plans
+              </Button>
             </Link>
-          </motion.div>
-
-          {/* Trust Badges */}
-          <div className="flex flex-wrap gap-6">
-            {[
-              { icon: Shield, label: "Genuine Products" },
-              { icon: Truck, label: "Fast Delivery" },
-              { icon: CreditCard, label: "Flexible Payment" },
-            ].map(({ icon: Icon, label }, index) => (
-              <motion.div
-                key={label}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 1.5 + index * 0.15, duration: 0.5 }}
-                className="flex items-center gap-2 text-white/70"
-              >
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity, delay: index * 0.5 }}
-                >
-                  <Icon className="w-4 h-4 text-white/80" />
-                </motion.div>
-                <span className="text-sm">{label}</span>
-              </motion.div>
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-white/85 text-xs md:text-sm">
+            {[{ icon: Shield, label: "Genuine Products" }, { icon: Truck, label: "Fast Delivery" }, { icon: CreditCard, label: "Flexible Payment" }].map(({ icon: Icon, label }) => (
+              <span key={label} className="inline-flex items-center gap-2"><Icon className="w-4 h-4" />{label}</span>
             ))}
           </div>
+          <div className="flex gap-2 mt-5" aria-label="Choose hero slide">
+            {slides.map((slide, i) => <button key={slide.label} onClick={() => setActive(i)} aria-label={`Show ${slide.label}`} className={`h-1.5 rounded-full transition-all ${active === i ? "w-8 bg-white" : "w-3 bg-white/50"}`} />)}
+          </div>
         </div>
-      </motion.div>
-
-      {/* Scroll indicator */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
-      >
-        <motion.div
-          animate={{ y: [0, 10, 0] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="w-6 h-10 rounded-full border-2 border-white/30 flex items-start justify-center pt-2"
-        >
-          <motion.div className="w-1.5 h-1.5 rounded-full bg-white/70" />
-        </motion.div>
-      </motion.div>
+      </div>
     </section>
   );
 };
