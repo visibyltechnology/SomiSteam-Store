@@ -6,7 +6,7 @@ import {
   BarChart3, Upload, Image, Eye, Search, Filter, ChevronDown,
   DollarSign, Calendar, ShoppingBag, AlertCircle, CheckCircle,
   Clock, XCircle, Truck, ArrowUpRight, ArrowDownRight, MoreVertical,
-  Settings, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
+  Settings, Pencil, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client"; // One-time legacy product import only; dashboard reads Firebase.
@@ -224,10 +224,14 @@ const AdminDashboard = () => {
     setMigratingProducts(true);
     try {
       toast.info("Connecting to the existing product catalogue…");
-      const [{ data: legacyProducts, error }, existingProducts] = await Promise.all([
-        supabase.from("products").select("*").order("created_at", { ascending: true }).abortSignal(AbortSignal.timeout(20000)),
-        getStoreProducts(),
-      ]);
+      const legacyQuery = supabase.from("products").select("*").abortSignal(AbortSignal.timeout(10000));
+      const timeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("The old catalogue did not respond within 10 seconds. Migration stopped safely; no source products were changed.")), 10000);
+      });
+      const [{ data: legacyProducts, error }, existingProducts] = await Promise.race([
+        Promise.all([legacyQuery, getStoreProducts()]),
+        timeout,
+      ]) as [any, any];
       if (error) throw error;
       const migratedIds = new Set(existingProducts.map((product) => product.legacySupabaseId).filter(Boolean));
       const pending = (legacyProducts || []).filter((product) => !migratedIds.has(product.id));
@@ -242,7 +246,8 @@ const AdminDashboard = () => {
 
       for (const product of pending) {
         try {
-          const sourceImages = Array.isArray(product.images) ? product.images.slice(0, 4) : [];
+          const rawImages = Array.isArray(product.images) ? product.images : (product.image ? [product.image] : product.image_url ? [product.image_url] : []);
+          const sourceImages = rawImages.slice(0, 4);
           const images = await Promise.all(sourceImages.filter(Boolean).map(async (source: string, index: number) => {
             const response = await fetch(source, { signal: AbortSignal.timeout(10000), mode: "cors" });
             if (!response.ok) throw new Error("An existing product image could not be downloaded.");
@@ -732,7 +737,7 @@ const AdminDashboard = () => {
                         {product.available ? "Active" : "Inactive"}
                       </Badge>
                       <Button size="icon" variant="ghost" onClick={() => openProductEditor(product)} className="text-accent w-8 h-8" aria-label="Edit product">
-                        <Settings className="w-4 h-4" />
+                        <Pencil className="w-4 h-4" />
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => handleDeleteProduct(product.id)} className="text-destructive w-7 h-7">
                         <Trash2 className="w-3.5 h-3.5" />
