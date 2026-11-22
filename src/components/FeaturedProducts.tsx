@@ -2,7 +2,8 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { products, formatPrice } from "@/data/products";
+import { formatPrice } from "@/data/products";
+import { useStoreProducts } from "@/hooks/useStoreProducts";
 
 const containerVariants = {
   hidden: {},
@@ -19,6 +20,7 @@ const cardVariants = {
 };
 
 const FeaturedProducts = () => {
+  const { products, loading } = useStoreProducts();
   return (
     <section className="py-20 lg:py-28 bg-background overflow-hidden">
       <div className="container mx-auto px-4 lg:px-8">
@@ -57,7 +59,7 @@ const FeaturedProducts = () => {
           viewport={{ once: true, margin: "-80px" }}
           className="grid grid-cols-2 gap-3"
         >
-          {products.map((product) => {
+          {!loading && products.slice(0, 4).map((product) => {
             const stockPct = Math.round((product.stockCount / product.totalStock) * 100);
             return (
               <motion.div key={product.id} variants={cardVariants}>
