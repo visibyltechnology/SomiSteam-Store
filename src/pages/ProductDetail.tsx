@@ -212,7 +212,7 @@ const ProductDetail = () => {
               </div>
 
               {/* Purchase Options */}
-              <div className="space-y-4 mb-8>
+              <div className="space-y-4 mb-8">
                 <Button
                   onClick={() => handlePayment("full_payment")}
                   disabled={loadingPayment}
