@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, ShoppingCart, CreditCard, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ShoppingCart, CreditCard, Check, Loader2, CalendarClock } from "lucide-react";
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -194,8 +194,25 @@ const ProductDetail = () => {
                 </div>
               </div>
 
+              {/* Credibly BNPL option — activate live applications when merchant API access is available. */}
+              <div className="rounded-2xl border-2 border-dashed border-accent/50 bg-accent/5 p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
+                    <CalendarClock className="w-5 h-5 text-accent" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-foreground">Buy Now, Pay Later with Credibly</h3>
+                      <span className="text-[10px] font-semibold rounded-full px-2 py-1 bg-secondary text-muted-foreground">Coming soon</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Get your product now and spread the payment over time, subject to Credibly approval.</p>
+                    <Button type="button" variant="outline" className="mt-3 w-full border-accent text-accent" onClick={() => toast.info("Credibly Buy Now, Pay Later will be activated when the merchant API integration is connected.")}>Choose Credibly BNPL</Button>
+                  </div>
+                </div>
+              </div>
+
               {/* Purchase Options */}
-              <div className="space-y-4 mb-8">
+              <div className="space-y-4 mb-8>
                 <Button
                   onClick={() => handlePayment("full_payment")}
                   disabled={loadingPayment}
