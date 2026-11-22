@@ -11,7 +11,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client"; // One-time legacy product import only; dashboard reads Firebase.
 import { firebaseAuth } from "@/integrations/firebase/client";
-import { compressProductImage, createStoreProduct, getStoreProducts, removeStoreProduct } from "@/services/firestoreProducts";
+import { compressProductImage, createStoreProduct, getStoreProduct, getStoreProducts, removeStoreProduct, updateStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -113,6 +113,11 @@ const AdminDashboard = () => {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [migratingProducts, setMigratingProducts] = useState(false);
   const [productImages, setProductImages] = useState<File[]>([]);
+  const [editingProduct, setEditingProduct] = useState<DBProduct | null>(null);
+  const [editDraft, setEditDraft] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
+  const [editImages, setEditImages] = useState<File[]>([]);
+  const [replaceEditImages, setReplaceEditImages] = useState(false);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Settings state
@@ -284,6 +289,45 @@ const AdminDashboard = () => {
     }
   };
 
+  const openProductEditor = async (product: DBProduct) => {
+    try {
+      const full = await getStoreProduct(product.id);
+      if (!full) throw new Error("Product could not be found.");
+      setEditingProduct(product);
+      setEditDraft({
+        name: full.name, brand: full.brand, category: full.category, description: full.description || "",
+        price: String(full.price), min_deposit: String(full.minDeposit || 0),
+        max_installment_months: String(full.maxInstallmentMonths || 6), features: (full.features || []).join(", "),
+      });
+      setEditImages([]);
+      setReplaceEditImages(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open product editor.");
+    }
+  };
+
+  const saveProductEdits = async () => {
+    if (!editingProduct || !editDraft.name.trim() || !editDraft.price) return;
+    setUploadingImage(true);
+    try {
+      const updates: any = {
+        name: editDraft.name.trim(), brand: editDraft.brand, category: editDraft.category,
+        description: editDraft.description, price: Number(editDraft.price), originalPrice: Number(editDraft.price),
+        minDeposit: Number(editDraft.min_deposit) || 0,
+        maxInstallmentMonths: Number(editDraft.max_installment_months) || 6,
+        features: editDraft.features.split(",").map((item) => item.trim()).filter(Boolean),
+      };
+      if (replaceEditImages) updates.images = await handleImageUpload(editImages);
+      await updateStoreProduct(editingProduct.id, updates);
+      toast.success("Product updated successfully!");
+      setEditingProduct(null); setEditImages([]); setReplaceEditImages(false);
+      await fetchData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update product.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
   const handleDeleteProduct = async (id: string) => {
     try {
       await removeStoreProduct(id);
