@@ -122,12 +122,15 @@ export const getStoreProducts = async (): Promise<StoreProduct[]> => {
 export const getStoreProduct = async (id: string): Promise<StoreProduct | null> => {
   const snapshot = await getDoc(doc(firestore, "products", id));
   if (!snapshot.exists()) return null;
+  // Sort locally so this lookup does not require a composite Firestore index.
   const imageSnapshot = await getDocs(query(
     productImagesCollection,
     where("productId", "==", id),
-    orderBy("position", "asc"),
   ));
-  const images = imageSnapshot.docs.map((item) => String(item.data().dataUrl || "")).filter(Boolean);
+  const images = imageSnapshot.docs
+    .sort((a, b) => Number(a.data().position ?? 0) - Number(b.data().position ?? 0))
+    .map((item) => String(item.data().dataUrl || ""))
+    .filter(Boolean);
   return normalizeProduct(snapshot.id, snapshot.data(), images);
 };
 
