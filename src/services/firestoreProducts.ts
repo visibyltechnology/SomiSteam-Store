@@ -115,8 +115,28 @@ const normalizeProduct = (id: string, data: Record<string, unknown>, images: str
 };
 
 export const getStoreProducts = async (): Promise<StoreProduct[]> => {
-  const snapshot = await getDocs(query(productsCollection, orderBy("createdAt", "desc")));
-  return snapshot.docs.map((item) => normalizeProduct(item.id, item.data()));
+  const [snapshot, imageSnapshot] = await Promise.all([
+    getDocs(query(productsCollection, orderBy("createdAt", "desc"))),
+    getDocs(productImagesCollection),
+  ]);
+
+  const imagesByProduct = new Map<string, { position: number; dataUrl: string }[]>();
+  imageSnapshot.docs.forEach((imageDoc) => {
+    const data = imageDoc.data();
+    const productId = String(data.productId || "");
+    const dataUrl = String(data.dataUrl || "");
+    if (!productId || !dataUrl) return;
+    const existing = imagesByProduct.get(productId) || [];
+    existing.push({ position: Number(data.position ?? 0), dataUrl });
+    imagesByProduct.set(productId, existing);
+  });
+
+  return snapshot.docs.map((item) => {
+    const images = (imagesByProduct.get(item.id) || [])
+      .sort((a, b) => a.position - b.position)
+      .map((entry) => entry.dataUrl);
+    return normalizeProduct(item.id, item.data(), images);
+  });
 };
 
 export const getStoreProduct = async (id: string): Promise<StoreProduct | null> => {
