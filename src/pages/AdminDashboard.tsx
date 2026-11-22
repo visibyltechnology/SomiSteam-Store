@@ -198,7 +198,7 @@ const AdminDashboard = () => {
         stockCount: 0,
         totalStock: 0,
       });
-      toast.success("Product added to Firestore successfully!");
+      toast.success("Product uploaded successfully!");
       setShowAddProduct(false);
       setNewProduct({ name: "", brand: "Hisense", category: "Televisions", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
       setProductImages([]);
