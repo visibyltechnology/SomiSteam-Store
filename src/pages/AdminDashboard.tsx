@@ -9,7 +9,6 @@ import {
   Settings, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { firebaseAuth } from "@/integrations/firebase/client";
 import { compressProductImage, createStoreProduct, getStoreProducts, removeStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
@@ -141,57 +140,33 @@ const AdminDashboard = () => {
   }, [user, isAdmin, authLoading]);
 
   const fetchData = async () => {
-    const [firestoreProducts, ordersRes, paymentsRes, customersRes] = await Promise.all([
-      getStoreProducts(),
-      supabase.from("orders").select("*").order("created_at", { ascending: false }),
-      supabase.from("payments").select("*").order("created_at", { ascending: false }),
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-    ]);
-    setProducts(firestoreProducts.map((product) => ({
-      id: product.id,
-      name: product.name,
-      brand: product.brand,
-      category: product.category,
-      description: product.description || null,
-      price: product.price,
-      min_deposit: product.minDeposit,
-      max_installment_months: product.maxInstallmentMonths,
-      features: product.features,
-      images: product.images,
-      available: product.available,
-      created_at: product.createdAt instanceof Date ? product.createdAt.toISOString() : new Date().toISOString(),
-    })));
-    if (ordersRes.data) setOrders(ordersRes.data);
-    if (paymentsRes.data) setPayments(paymentsRes.data);
-    if (customersRes.data) setCustomers(customersRes.data);
-    setLoading(false);
+    setLoading(true);
+    try {
+      const firestoreProducts = await getStoreProducts();
+      setProducts(firestoreProducts.map((product) => ({
+        id: product.id, name: product.name, brand: product.brand, category: product.category,
+        description: product.description || null, price: product.price, min_deposit: product.minDeposit,
+        max_installment_months: product.maxInstallmentMonths, features: product.features, images: product.images,
+        available: product.available, created_at: product.createdAt instanceof Date ? product.createdAt.toISOString() : new Date().toISOString(),
+      })));
+      // Keep the dashboard usable while legacy order/payment records are migrated.
+      setOrders([]);
+      setPayments([]);
+      setCustomers([]);
+    } catch (error) {
+      console.error("Firebase admin dashboard load failed:", error);
+      toast.error(error instanceof Error ? error.message : "Could not load products from Firebase.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchSettings = async () => {
-    const { data } = await supabase.from("app_settings").select("*");
-    if (data) {
-      data.forEach((s: { key: string; value: string }) => {
-        if (s.key === "flutterwave_enabled") setFlutterwaveEnabled(s.value === "true");
-        if (s.key === "flutterwave_public_key") setFlutterwavePublicKey(s.value);
-        if (s.key === "flutterwave_secret_key") setFlutterwaveSecretKey(s.value);
-        if (s.key === "whatsapp_number") setWhatsappNumber(s.value);
-      });
-    }
+    // Do not let the retired Supabase settings endpoint block admin access.
   };
 
   const saveSettings = async () => {
-    setSavingSettings(true);
-    const settings = [
-      { key: "flutterwave_enabled", value: flutterwaveEnabled ? "true" : "false" },
-      { key: "flutterwave_public_key", value: flutterwavePublicKey },
-      { key: "flutterwave_secret_key", value: flutterwaveSecretKey },
-      { key: "whatsapp_number", value: whatsappNumber },
-    ];
-    for (const s of settings) {
-      await supabase.from("app_settings").upsert({ key: s.key, value: s.value }, { onConflict: "key" });
-    }
-    setSavingSettings(false);
-    toast.success("Settings saved successfully!");
+    toast.error("Settings are not yet migrated to Firebase and have not been saved.");
   };
 
   const handleImageUpload = async (files: File[]): Promise<string[]> => {
@@ -308,10 +283,8 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
-    const { error } = await supabase.from("orders").update({ status: status as any }).eq("id", orderId);
-    if (error) toast.error(error.message);
-    else { toast.success("Status updated"); fetchData(); }
+  const handleUpdateOrderStatus = async (_orderId: string, _status: string) => {
+    toast.error("Order management will be enabled after order records are migrated to Firebase.");
   };
 
   const totalRevenue = orders.reduce((sum, o) => sum + o.total_paid, 0);
