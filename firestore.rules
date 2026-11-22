@@ -1,14 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
 
+    // The store administrator is identified by the authenticated Firebase email.
+    // No manual UID document or extra Firestore user collection setup is required.
     function isAdmin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+      return request.auth != null
+        && request.auth.token.email == "somisteamventures@gmail.com";
     }
 
     match /products/{productId} {
@@ -22,17 +20,18 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
-      allow create: if signedIn()
+      allow read: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+      allow create: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.role == "customer";
-      allow update: if signedIn()
+      allow update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.role == resource.data.role;
       allow delete: if isAdmin();
     }
 
-    // Orders, payments and app settings remain in the existing payment backend during this migration.
+    // Keep all unrelated collections closed.
     match /{document=**} {
       allow read, write: if false;
     }
