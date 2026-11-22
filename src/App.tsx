@@ -19,7 +19,6 @@ import PaymentCallback from "./pages/PaymentCallback.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Watermark from "./components/Watermark.tsx";
-import PageLoader from "./components/PageLoader.tsx";
 import WhatsAppButton from "./components/WhatsAppButton.tsx";
 
 const queryClient = new QueryClient();
@@ -32,7 +31,6 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <PageLoader />
             <Watermark />
             <WhatsAppButton />
             <Routes>
