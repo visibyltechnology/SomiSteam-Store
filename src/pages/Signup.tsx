@@ -4,6 +4,9 @@ import { motion } from "framer-motion";
 import somisteamLogo from "@/assets/somisteam-logo.jpg";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { firebaseAuth, firestore } from "@/integrations/firebase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -28,11 +31,30 @@ const Signup = () => {
     }
     setLoading(true);
     const { error } = await signUp(email, password, fullName);
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       toast.error(error.message);
-    } else {
+      return;
+    }
+
+    try {
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      await updateProfile(credential.user, { displayName: fullName.trim() });
+      await setDoc(doc(firestore, "users", credential.user.uid), {
+        email: email.trim().toLowerCase(),
+        fullName: fullName.trim(),
+        role: "customer",
+        createdAt: serverTimestamp(),
+      });
+      await sendEmailVerification(credential.user);
+    } catch (firebaseError) {
+      console.error("Firebase account setup failed:", firebaseError);
+      setLoading(false);
+      toast.error("Your legacy account was created, but Firebase setup failed. Please contact the store before signing in.");
+      return;
+    }
+    setLoading(false);
+    {
       // Fire welcome email — non-blocking, won't affect signup flow
       supabase.functions.invoke("send-confirmation-email", {
         body: {
