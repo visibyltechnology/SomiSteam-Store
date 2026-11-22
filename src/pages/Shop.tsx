@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
   import Navbar from "@/components/Navbar";
   import Footer from "@/components/Footer";
   import { Slider } from "@/components/ui/slider";
-  import { products, formatPrice } from "@/data/products";
+  import { formatPrice } from "@/data/products";
+import { useStoreProducts } from "@/hooks/useStoreProducts";
 
   const ALL = "All";
   const categories = [ALL, "Televisions", "Refrigerators", "Washing Machines", "Air Conditioners"];
@@ -23,6 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
   ];
 
   const Shop = () => {
+    const { products, loading } = useStoreProducts();
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState(ALL);
     const [activeBrand, setActiveBrand] = useState(ALL);
@@ -215,7 +217,9 @@ import { motion, AnimatePresence } from "framer-motion";
 
             {/* Product Grid */}
             <AnimatePresence mode="popLayout">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <div className="py-16 text-center text-sm text-muted-foreground">Loading products...</div>
+              ) : filtered.length === 0 ? (
                 <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-16">
                   <p className="text-muted-foreground text-sm">No products match your filters.</p>
                   <button onClick={clearFilters} className="mt-3 text-accent text-sm underline">Clear all filters</button>
