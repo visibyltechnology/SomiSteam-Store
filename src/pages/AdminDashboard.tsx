@@ -676,6 +676,32 @@ const AdminDashboard = () => {
                 </Dialog>
               </div>
 
+              <Dialog open={!!editingProduct} onOpenChange={(open) => { if (!open) { setEditingProduct(null); setEditImages([]); setReplaceEditImages(false); } }}>
+                <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                  <DialogHeader><DialogTitle className="font-display">Edit Product</DialogTitle></DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div><label className="text-sm font-medium mb-1 block">Product Name</label><Input value={editDraft.name} onChange={e => setEditDraft({ ...editDraft, name: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="text-sm font-medium mb-1 block">Brand</label><Input value={editDraft.brand} onChange={e => setEditDraft({ ...editDraft, brand: e.target.value })} /></div>
+                      <div><label className="text-sm font-medium mb-1 block">Category</label><Select value={editDraft.category} onValueChange={v => setEditDraft({ ...editDraft, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{categories.map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
+                    </div>
+                    <div><label className="text-sm font-medium mb-1 block">Description</label><Textarea value={editDraft.description} onChange={e => setEditDraft({ ...editDraft, description: e.target.value })} /></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="text-sm font-medium mb-1 block">Price (₦)</label><Input type="number" value={editDraft.price} onChange={e => setEditDraft({ ...editDraft, price: e.target.value })} /></div>
+                      <div><label className="text-sm font-medium mb-1 block">Minimum Deposit (₦)</label><Input type="number" value={editDraft.min_deposit} onChange={e => setEditDraft({ ...editDraft, min_deposit: e.target.value })} /></div>
+                    </div>
+                    <div><label className="text-sm font-medium mb-1 block">Maximum Installment Months</label><Input type="number" value={editDraft.max_installment_months} onChange={e => setEditDraft({ ...editDraft, max_installment_months: e.target.value })} /></div>
+                    <div><label className="text-sm font-medium mb-1 block">Features (comma separated)</label><Input value={editDraft.features} onChange={e => setEditDraft({ ...editDraft, features: e.target.value })} /></div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Replace Product Photos (optional)</label>
+                      <input ref={editFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { const selected = Array.from(e.target.files || []); if (selected.length > 4) { toast.error("Choose up to 4 photos."); return; } setEditImages(selected); setReplaceEditImages(true); e.currentTarget.value = ""; }} />
+                      <Button type="button" variant="outline" className="w-full" onClick={() => editFileInputRef.current?.click()}><Upload className="w-4 h-4 mr-2" />Choose replacement photos</Button>
+                      {replaceEditImages && <p className="text-xs text-muted-foreground mt-2">{editImages.length} replacement photo(s) selected. Saving replaces the current photos.</p>}
+                    </div>
+                    <Button className="w-full" disabled={uploadingImage || !editDraft.name.trim() || !editDraft.price} onClick={saveProductEdits}>{uploadingImage ? "Saving changes..." : "Save Changes"}</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <div className="text-xs text-muted-foreground mb-3">{filteredProducts.length} products</div>
 
               <div className="space-y-2">
@@ -703,6 +729,9 @@ const AdminDashboard = () => {
                       <Badge variant="outline" className={product.available ? "text-green-600 border-green-200 bg-green-50 text-[10px]" : "text-red-600 border-red-200 bg-red-50 text-[10px]"}>
                         {product.available ? "Active" : "Inactive"}
                       </Badge>
+                      <Button size="icon" variant="ghost" onClick={() => openProductEditor(product)} className="text-accent w-8 h-8" aria-label="Edit product">
+                        <Settings className="w-4 h-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => handleDeleteProduct(product.id)} className="text-destructive w-7 h-7">
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
