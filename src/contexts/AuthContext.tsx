@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { signOut as firebaseSignOut } from "firebase/auth";
+import { firebaseAuth } from "@/integrations/firebase/client";
 
 interface AuthContextType {
   user: User | null;
@@ -71,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await Promise.allSettled([supabase.auth.signOut(), firebaseSignOut(firebaseAuth)]);
     setIsAdmin(false);
   };
 
