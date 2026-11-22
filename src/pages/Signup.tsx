@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import somisteamLogo from "@/assets/somisteam-logo.jpg";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from "firebase/auth";
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile, signInWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { firebaseAuth, firestore } from "@/integrations/firebase/client";
 import { Button } from "@/components/ui/button";
@@ -38,15 +38,21 @@ const Signup = () => {
     }
 
     try {
-      const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
-      await updateProfile(credential.user, { displayName: fullName.trim() });
+      let credential;
+      try {
+        credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+        await updateProfile(credential.user, { displayName: fullName.trim() });
+        await sendEmailVerification(credential.user);
+      } catch (createError) {
+        if ((createError as { code?: string }).code !== "auth/email-already-in-use") throw createError;
+        credential = await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      }
       await setDoc(doc(firestore, "users", credential.user.uid), {
         email: email.trim().toLowerCase(),
         fullName: fullName.trim(),
         role: "customer",
         createdAt: serverTimestamp(),
       });
-      await sendEmailVerification(credential.user);
     } catch (firebaseError) {
       console.error("Firebase account setup failed:", firebaseError);
       setLoading(false);
