@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { firebaseAuth } from "@/integrations/firebase/client";
 import { compressProductImage, createStoreProduct, getStoreProducts, removeStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +111,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [migratingProducts, setMigratingProducts] = useState(false);
   const [productImages, setProductImages] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -229,6 +231,70 @@ const AdminDashboard = () => {
       toast.error(error instanceof Error ? error.message : "Could not save product.");
     } finally {
       setUploadingImage(false);
+    }
+  };
+
+  const migrateLegacyProducts = async () => {
+    if (!firebaseAuth.currentUser) {
+      toast.error("Sign in with the Firebase admin account first, then retry migration.");
+      return;
+    }
+    setMigratingProducts(true);
+    try {
+      const [{ data: legacyProducts, error }, existingProducts] = await Promise.all([
+        supabase.from("products").select("*").order("created_at", { ascending: true }),
+        getStoreProducts(),
+      ]);
+      if (error) throw error;
+      const migratedIds = new Set(existingProducts.map((product) => product.legacySupabaseId).filter(Boolean));
+      const pending = (legacyProducts || []).filter((product) => !migratedIds.has(product.id));
+      let migrated = 0;
+      const failures: string[] = [];
+
+      for (const product of pending) {
+        try {
+          const sourceImages = Array.isArray(product.images) ? product.images.slice(0, 4) : [];
+          const images: string[] = [];
+          for (const source of sourceImages) {
+            if (!source) continue;
+            const response = await fetch(source);
+            if (!response.ok) throw new Error("An existing product image could not be downloaded.");
+            const blob = await response.blob();
+            const file = new File([blob], `legacy-${product.id}.jpg`, { type: blob.type || "image/jpeg" });
+            images.push(await compressProductImage(file));
+          }
+          await createStoreProduct({
+            name: product.name,
+            brand: product.brand || "Other",
+            category: product.category || "Other",
+            description: product.description || "",
+            price: Number(product.price) || 0,
+            originalPrice: Number(product.price) || 0,
+            images,
+            features: Array.isArray(product.features) ? product.features : [],
+            available: product.available !== false,
+            minDeposit: Number(product.min_deposit) || 0,
+            maxInstallmentMonths: Number(product.max_installment_months) || 6,
+            stockCount: 0,
+            totalStock: 0,
+            legacySupabaseId: product.id,
+          });
+          migrated += 1;
+        } catch (migrationError) {
+          failures.push(`${product.name}: ${migrationError instanceof Error ? migrationError.message : "migration failed"}`);
+        }
+      }
+
+      await fetchData();
+      if (failures.length) {
+        toast.warning(`Migrated ${migrated} products. ${failures.length} need attention: ${failures.slice(0, 2).join("; ")}`);
+      } else {
+        toast.success(migrated ? `Successfully migrated ${migrated} existing products to Firestore.` : "All existing products have already been migrated.");
+      }
+    } catch (migrationError) {
+      toast.error(migrationError instanceof Error ? migrationError.message : "Product migration failed.");
+    } finally {
+      setMigratingProducts(false);
     }
   };
 
@@ -468,6 +534,10 @@ const AdminDashboard = () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
                 </div>
+                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
+                  <RefreshCw className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-spin" : ""}`} />
+                  {migratingProducts ? "Migrating..." : "Migrate Existing Products"}
+                </Button>
                 <Dialog open={showAddProduct} onOpenChange={setShowAddProduct}>
                   <DialogTrigger asChild>
                     <Button className="bg-gradient-gold text-accent-foreground rounded-xl shadow-gold">
