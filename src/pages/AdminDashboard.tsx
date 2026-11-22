@@ -566,7 +566,7 @@ const AdminDashboard = () => {
                 </div>
                 <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
                   <RefreshCw className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-spin" : ""}`} />
-                  {migratingProducts ? "Migrating..." : "Migrate Existing Products"}
+                  {migratingProducts ? (migrationProgress.total ? "Migrating " + migrationProgress.done + "/" + migrationProgress.total : "Connecting to old catalogue...") : "Migrate Existing Products"}
                 </Button>
                 <Dialog open={showAddProduct} onOpenChange={setShowAddProduct}>
                   <DialogTrigger asChild>
