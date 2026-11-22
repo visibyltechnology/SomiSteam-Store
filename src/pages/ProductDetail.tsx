@@ -1,11 +1,12 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, ShoppingCart, CreditCard, Check, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { products, formatPrice, calculateInstallment } from "@/data/products";
+import { formatPrice, calculateInstallment } from "@/data/products";
+import { getStoreProduct, StoreProduct } from "@/services/firestoreProducts";
 import { Slider } from "@/components/ui/slider";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,10 +23,36 @@ const ProductDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const product = products.find((p) => p.id === id);
-  const [depositAmount, setDepositAmount] = useState(product ? product.minDeposit : 0);
+  const [product, setProduct] = useState<StoreProduct | null>(null);
+  const [loadingProduct, setLoadingProduct] = useState(true);
+  const [depositAmount, setDepositAmount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!id) {
+      setLoadingProduct(false);
+      return;
+    }
+    getStoreProduct(id)
+      .then((item) => {
+        if (active) {
+          setProduct(item);
+          if (item) setDepositAmount(item.minDeposit);
+        }
+      })
+      .catch((error) => {
+        console.error("Unable to load product:", error);
+        if (active) toast.error("Unable to load this product.");
+      })
+      .finally(() => { if (active) setLoadingProduct(false); });
+    return () => { active = false; };
+  }, [id]);
   const [selectedGateway, setSelectedGateway] = useState<Gateway>("flutterwave");
   const [loadingPayment, setLoadingPayment] = useState(false);
+
+  if (loadingProduct) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading product...</div>;
+  }
 
   if (!product) {
     return (
