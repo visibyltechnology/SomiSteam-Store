@@ -11,8 +11,8 @@ import { useStoreProducts } from "@/hooks/useStoreProducts";
   const ALL = "All";
   const categories = [ALL, "Televisions", "Refrigerators", "Washing Machines", "Air Conditioners"];
   const brands = [ALL, "Hisense", "Samsung"];
-  const MIN_PRICE = 100000;
-  const MAX_PRICE = 500000;
+  const MIN_PRICE = 0;
+  const MAX_PRICE = 5000000;
 
   type SortKey = "default" | "price_asc" | "price_desc" | "discount";
 
@@ -237,7 +237,14 @@ import { useStoreProducts } from "@/hooks/useStoreProducts";
                     >
                       <Link to={`/product/${product.id}`} className="group block">
                         <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-300 border border-gray-100">
-                          <div className="relative bg-gray-50 aspect-square overflow-hidden">
+                          <div className="relative bg-gradient-to-br from-gray-50 via-white to-red-50 aspect-square overflow-hidden">
+                            {!product.image ? (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center p-3">
+                                <span className="text-3xl font-bold text-red-700/70">S</span>
+                                <span className="text-[10px] font-semibold tracking-widest text-gray-400">SOMISTEAM</span>
+                                <span className="text-[10px] text-gray-400">{product.category}</span>
+                              </div>
+                            ) : null}
                             <img
                               src={product.image}
                               alt={product.name}
@@ -245,6 +252,7 @@ import { useStoreProducts } from "@/hooks/useStoreProducts";
                               loading="lazy"
                               width={400}
                               height={400}
+                              onError={(event) => { event.currentTarget.style.display = "none"; }}
                             />
                             {product.discount > 0 && (
                               <span className="absolute top-2 right-2 bg-[#c0160c] text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
