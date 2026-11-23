@@ -82,7 +82,9 @@ export const compressProductImage = async (file: File): Promise<string> => uploa
 // Import an existing product image from a public URL or data URI directly into this Cloudinary account.
 // Passing a remote URL to Cloudinary avoids browser CORS restrictions on the source image host.
 export const uploadProductImageSource = async (source: string): Promise<string> => {
-  if (!/^https?:\\/\\//i.test(source) && !/^data:image\\//i.test(source)) {
+  const isRemoteUrl = source.startsWith("https://") || source.startsWith("http://");
+  const isImageDataUri = source.startsWith("data:image/");
+  if (!isRemoteUrl && !isImageDataUri) {
     throw new Error("The source catalogue contains an unsupported image format.");
   }
 
