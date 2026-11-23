@@ -9,7 +9,7 @@ import {
   Settings, Pencil, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { compressProductImage, createStoreProduct, getStoreProduct, getStoreProducts, removeStoreProduct, updateStoreProduct } from "@/services/firestoreProducts";
+import { compressProductImage, createStoreProduct, getStoreProduct, getStoreProducts, removeStoreProduct, updateStoreProduct, uploadProductImageSource } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,7 @@ interface DBProduct {
   max_installment_months: number;
   features: string[] | null;
   images: string[] | null;
+  legacySupabaseId?: string;
   available: boolean;
   created_at: string;
 }
@@ -97,6 +98,26 @@ const CHART_COLORS = ["hsl(0,85%,40%)", "hsl(0,80%,55%)", "hsl(0,70%,65%)", "hsl
 
 const categories = ["Televisions", "Refrigerators", "Washing Machines", "Air Conditioners", "Microwaves", "Generators"];
 
+const SMART_CHOICE_FIRESTORE_URL =
+  "https://firestore.googleapis.com/v1/projects/smartchoice-rebuild/databases/(default)/documents/products?pageSize=100&key=AIzaSyCypCC5eV2vhJFvPTnSn5rQsgpu4oPLYyU";
+
+const readFirestoreRestValue = (value: any): any => {
+  if (!value || typeof value !== "object") return value;
+  if ("stringValue" in value) return value.stringValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return value.doubleValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("arrayValue" in value) return (value.arrayValue.values || []).map(readFirestoreRestValue);
+  if ("mapValue" in value) {
+    return Object.fromEntries(Object.entries(value.mapValue.fields || {}).map(([key, item]) => [key, readFirestoreRestValue(item)]));
+  }
+  return null;
+};
+
+const normalizeProductMatch = (value: unknown) =>
+  String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+
 const AdminDashboard = () => {
   const { user, isAdmin, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -109,6 +130,9 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageImportRunning, setImageImportRunning] = useState(false);
+  const [imageImportProgress, setImageImportProgress] = useState({ done: 0, total: 0 });
+
   const [productImages, setProductImages] = useState<File[]>([]);
   const [editingProduct, setEditingProduct] = useState<DBProduct | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
@@ -150,6 +174,7 @@ const AdminDashboard = () => {
         id: product.id, name: product.name, brand: product.brand, category: product.category,
         description: product.description || null, price: product.price, min_deposit: product.minDeposit,
         max_installment_months: product.maxInstallmentMonths, features: product.features, images: product.images,
+        legacySupabaseId: product.legacySupabaseId,
         available: product.available, created_at: product.createdAt instanceof Date ? product.createdAt.toISOString() : new Date().toISOString(),
       })));
       // Keep the dashboard usable while legacy order/payment records are migrated.
@@ -170,6 +195,104 @@ const AdminDashboard = () => {
 
   const saveSettings = async () => {
     toast.error("Settings are not yet migrated to Firebase and have not been saved.");
+  };
+
+  const importSmartChoiceProductPhotos = async () => {
+    if (imageImportRunning) return;
+    setImageImportRunning(true);
+    setImageImportProgress({ done: 0, total: 0 });
+
+    try {
+      toast.info("Connecting to the original Smart Choice product catalogue…");
+      const response = await fetch(SMART_CHOICE_FIRESTORE_URL, { method: "GET", cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Smart Choice catalogue returned HTTP " + response.status + ". No SomiSteam products were changed.");
+      }
+      const payload = await response.json();
+      const sourceProducts = (payload.documents || []).map((document: any) => {
+        const fields = Object.fromEntries(
+          Object.entries(document.fields || {}).map(([key, value]) => [key, readFirestoreRestValue(value)])
+        );
+        return { ...fields, sourceId: String(document.name || "").split("/").pop() };
+      });
+
+      if (!sourceProducts.length) {
+        throw new Error("The original Smart Choice catalogue returned no products.");
+      }
+
+      const sourceByName = new Map<string, any>();
+      sourceProducts.forEach((source: any) => {
+        const key = normalizeProductMatch(source.name);
+        if (key && !sourceByName.has(key)) sourceByName.set(key, source);
+      });
+
+      // Verified legacy-title exceptions in the two catalogues.
+      const sourceOverrides: Record<string, string> = {
+        "smartchoice-4": "prod_1793633832295",
+        "smartchoice-5": "prod_1793634781868",
+        "smartchoice-29": "prod_1793634306140",
+        "smartchoice-30": "prod_1793433619667",
+      };
+      const sourceById = new Map<string, any>(sourceProducts.map((source: any) => [source.sourceId, source]));
+
+      const missingProducts = products.filter((product) =>
+        !(product.images || []).some((url) => typeof url === "string" && url.trim())
+      );
+      setImageImportProgress({ done: 0, total: missingProducts.length });
+
+      let recovered = 0;
+      let unmatched = 0;
+      const failed: string[] = [];
+
+      for (const product of missingProducts) {
+        try {
+          const overrideId = product.legacySupabaseId ? sourceOverrides[product.legacySupabaseId] : undefined;
+          const source = (overrideId ? sourceById.get(overrideId) : undefined) ||
+            sourceByName.get(normalizeProductMatch(product.name));
+
+          if (!source) {
+            unmatched += 1;
+            continue;
+          }
+
+          const rawImages = Array.isArray(source.images)
+            ? source.images
+            : [source.image, source.imageUrl, source.image_url].filter(Boolean);
+          const sourceImages = rawImages
+            .filter((image: unknown): image is string => typeof image === "string" && /^(https?:\/\/|data:image\/)/i.test(image.trim()))
+            .slice(0, 4);
+
+          if (!sourceImages.length) {
+            unmatched += 1;
+            continue;
+          }
+
+          const cloudinaryUrls: string[] = [];
+          for (const sourceImage of sourceImages) {
+            cloudinaryUrls.push(await uploadProductImageSource(sourceImage.trim()));
+          }
+
+          await updateStoreProduct(product.id, { images: cloudinaryUrls });
+          recovered += 1;
+        } catch (error) {
+          console.error("Smart Choice photo import failed for", product.name, error);
+          failed.push(product.name + ": " + (error instanceof Error ? error.message : "upload failed"));
+        } finally {
+          setImageImportProgress((progress) => ({ ...progress, done: progress.done + 1 }));
+        }
+      }
+
+      await fetchData();
+      if (recovered > 0) toast.success("Imported Cloudinary photographs for " + recovered + " products.");
+      if (unmatched > 0) toast.warning(unmatched + " products had no safely matched source photographs and were left unchanged.");
+      if (failed.length > 0) toast.error(failed.length + " products could not be imported. First issue: " + failed[0]);
+      if (recovered === 0 && unmatched === 0 && failed.length === 0) toast.success("All products already have photographs.");
+    } catch (error) {
+      console.error("Smart Choice product photo import failed:", error);
+      toast.error(error instanceof Error ? error.message : "Could not connect to the Smart Choice catalogue.");
+    } finally {
+      setImageImportRunning(false);
+    }
   };
 
   const handleImageUpload = async (files: File[]): Promise<string[]> => {
@@ -485,6 +608,16 @@ const AdminDashboard = () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={importSmartChoiceProductPhotos}
+                  disabled={imageImportRunning || uploadingImage}
+                  className="rounded-xl whitespace-nowrap"
+                >
+                  <Image className={`mr-2 w-4 h-4 ${imageImportRunning ? "animate-pulse" : ""}`} />
+                  {imageImportRunning ? "Importing photos…" : "Import Smart Choice Photos"}
+                </Button>
                 <Dialog open={showAddProduct} onOpenChange={setShowAddProduct}>
                   <DialogTrigger asChild>
                     <Button className="bg-gradient-gold text-accent-foreground rounded-xl shadow-gold">
@@ -621,6 +754,11 @@ const AdminDashboard = () => {
                   </div>
                 </DialogContent>
               </Dialog>
+              {imageImportRunning && (
+                <div className="mb-4 rounded-xl border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+                  Uploading original Smart Choice photographs to Cloudinary: {imageImportProgress.done} / {imageImportProgress.total}
+                </div>
+              )}
               <div className="text-xs text-muted-foreground mb-3">{filteredProducts.length} products</div>
 
               <div className="space-y-2">
