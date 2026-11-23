@@ -9,8 +9,6 @@ import {
   Settings, Pencil, Save, RefreshCw, Phone, Key, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client"; // One-time legacy product import only; dashboard reads Firebase.
-import { firebaseAuth } from "@/integrations/firebase/client";
 import { compressProductImage, createStoreProduct, getStoreProduct, getStoreProducts, removeStoreProduct, updateStoreProduct } from "@/services/firestoreProducts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +17,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatPrice } from "@/data/products";
-import { smartChoiceProducts } from "@/data/smartChoiceImport";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -112,8 +109,6 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [migratingProducts, setMigratingProducts] = useState(false);
-  const [migrationProgress, setMigrationProgress] = useState({ done: 0, total: 0 });
   const [productImages, setProductImages] = useState<File[]>([]);
   const [editingProduct, setEditingProduct] = useState<DBProduct | null>(null);
   const [editDraft, setEditDraft] = useState({ name: "", brand: "", category: "", description: "", price: "", min_deposit: "", max_installment_months: "6", features: "" });
@@ -214,215 +209,6 @@ const AdminDashboard = () => {
       toast.error(error instanceof Error ? error.message : "Could not save product.");
     } finally {
       setUploadingImage(false);
-    }
-  };
-
-  const importSmartChoiceProducts = async () => {
-    if (!firebaseAuth.currentUser) {
-      toast.error("Please sign in with the Firebase admin account first.");
-      return;
-    }
-    setMigratingProducts(true);
-    try {
-      const existing = await getStoreProducts();
-      const importedIds = new Set(existing.map((item) => item.legacySupabaseId).filter(Boolean));
-      const pending = smartChoiceProducts.filter((item, index) => !importedIds.has("smartchoice-" + index));
-      if (!pending.length) {
-        toast.success("Smart Choice catalogue has already been imported.");
-        return;
-      }
-      setMigrationProgress({ done: 0, total: pending.length });
-      let completed = 0;
-      for (const [index, item] of smartChoiceProducts.entries()) {
-        const [name, category, sourcePrice] = item;
-        const marker = "smartchoice-" + index;
-        if (importedIds.has(marker)) continue;
-        await createStoreProduct({
-          name, brand: "Hisense", category,
-          description: "Product sourced from Smart Choice Electronics Group. Price includes SomiSteam's ₦5,000 markup. Confirm current availability before purchase.",
-          price: sourcePrice + 5000, originalPrice: sourcePrice + 5000, images: [], features: [],
-          available: true, minDeposit: Math.round((sourcePrice + 5000) * 0.3),
-          maxInstallmentMonths: 6, stockCount: 0, totalStock: 0,
-          legacySupabaseId: marker,
-        });
-        importedIds.add(marker);
-        completed += 1;
-        setMigrationProgress({ done: completed, total: pending.length });
-      }
-      await fetchData();
-      toast.success("Imported " + completed + " Smart Choice products with ₦5,000 added to each price.");
-    } catch (error) {
-      console.error("Smart Choice import failed:", error);
-      toast.error(error instanceof Error ? error.message : "Could not import Smart Choice products.");
-    } finally {
-      setMigratingProducts(false);
-    }
-  };
-
-  const migrateLegacyProducts = async () => {
-    if (!firebaseAuth.currentUser) {
-      toast.error("Sign in with the Firebase admin account first, then retry migration.");
-      return;
-    }
-    setMigratingProducts(true);
-    try {
-      toast.info("Connecting to the existing product catalogue…");
-      const legacyQuery = supabase.from("products").select("*").abortSignal(AbortSignal.timeout(10000));
-      const timeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("The old catalogue did not respond within 10 seconds. Migration stopped safely; no source products were changed.")), 10000);
-      });
-      const [{ data: legacyProducts, error }, existingProducts] = await Promise.race([
-        Promise.all([legacyQuery, getStoreProducts()]),
-        timeout,
-      ]) as [any, any];
-      if (error) throw error;
-      const migratedIds = new Set(existingProducts.map((product) => product.legacySupabaseId).filter(Boolean));
-      const pending = (legacyProducts || []).filter((product) => !migratedIds.has(product.id));
-      if (pending.length === 0) {
-        toast.success("No new products to migrate. All products in the old catalogue are already migrated.");
-        return;
-      }
-      setMigrationProgress({ done: 0, total: pending.length });
-      toast.info("Found " + pending.length + " products. Starting migration…");
-      let migrated = 0;
-      const failures: string[] = [];
-
-      for (const product of pending) {
-        try {
-          const rawImages = Array.isArray(product.images) ? product.images : (product.image ? [product.image] : product.image_url ? [product.image_url] : []);
-          const sourceImages = rawImages.slice(0, 4);
-          const images = await Promise.all(sourceImages.filter(Boolean).map(async (source: string, index: number) => {
-            const response = await fetch(source, { signal: AbortSignal.timeout(10000), mode: "cors" });
-            if (!response.ok) throw new Error("An existing product image could not be downloaded.");
-            const blob = await response.blob();
-            const file = new File([blob], "legacy-" + product.id + "-" + index + ".jpg", { type: blob.type || "image/jpeg" });
-            return compressProductImage(file);
-          }));
-          await createStoreProduct({
-            name: product.name,
-            brand: product.brand || "Other",
-            category: product.category || "Other",
-            description: product.description || "",
-            price: Number(product.price) || 0,
-            originalPrice: Number(product.price) || 0,
-            images,
-            features: Array.isArray(product.features) ? product.features : [],
-            available: product.available !== false,
-            minDeposit: Number(product.min_deposit) || 0,
-            maxInstallmentMonths: Number(product.max_installment_months) || 6,
-            stockCount: 0,
-            totalStock: 0,
-            legacySupabaseId: product.id,
-          });
-          migrated += 1;
-        } catch (migrationError) {
-          failures.push(product.name + ": " + (migrationError instanceof Error ? migrationError.message : "migration failed"));
-        } finally {
-          setMigrationProgress((progress) => ({ ...progress, done: progress.done + 1 }));
-        }
-      }
-
-      await fetchData();
-      if (failures.length) {
-        toast.warning(`Migrated ${migrated} products. ${failures.length} need attention: ${failures.slice(0, 2).join("; ")}`);
-      } else {
-        toast.success(migrated ? `Successfully migrated ${migrated} existing products to Firestore.` : "All existing products have already been migrated.");
-      }
-    } catch (migrationError) {
-      console.error("Product migration failed:", migrationError);
-      const message = migrationError instanceof Error ? migrationError.message : "Product migration failed."; 
-      toast.error(message.includes("Timeout") || message.includes("aborted")
-        ? "The old product catalogue did not respond within 20 seconds. No products were deleted. Please retry after the source connection is restored."
-        : message);
-    } finally {
-      setMigratingProducts(false);
-    }
-  };
-
-  const repairMissingProductImages = async () => {
-    if (!firebaseAuth.currentUser) {
-      toast.error("Sign in with the Firebase admin account first.");
-      return;
-    }
-
-    setMigratingProducts(true);
-    try {
-      toast.info("Checking the old catalogue for the missing product photographs…");
-      const [currentProducts, legacyResult] = await Promise.all([
-        getStoreProducts(),
-        supabase.from("products").select("*").abortSignal(AbortSignal.timeout(15000)),
-      ]);
-      if (legacyResult.error) throw legacyResult.error;
-
-      const normalizeName = (value: unknown) =>
-        String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-      const legacyByName = new Map<string, any>();
-      for (const item of legacyResult.data || []) {
-        const key = normalizeName(item.name);
-        if (key && !legacyByName.has(key)) legacyByName.set(key, item);
-      }
-
-      const missing = currentProducts.filter((item) => !(item.images || []).some((url) => typeof url === "string" && url.trim()));
-      setMigrationProgress({ done: 0, total: missing.length });
-      let repaired = 0;
-      const failures: string[] = [];
-      let unmatched = 0;
-
-      for (const product of missing) {
-        try {
-          const source = legacyByName.get(normalizeName(product.name));
-          if (!source) {
-            unmatched += 1;
-            continue;
-          }
-
-          const rawImages = Array.isArray(source.images)
-            ? source.images
-            : [source.image, source.image_url, source.imageUrl].filter(Boolean);
-          const sourceUrls = rawImages.map((value: unknown) => {
-            if (typeof value === "string") return value.trim();
-            if (!value || typeof value !== "object") return "";
-            const record = value as Record<string, unknown>;
-            return [record.secure_url, record.url, record.imageUrl, record.src]
-              .find((entry) => typeof entry === "string" && entry.trim()) as string || "";
-          }).filter((url: string) => /^https?:\/\//i.test(url)).slice(0, 4);
-
-          if (!sourceUrls.length) {
-            unmatched += 1;
-            continue;
-          }
-
-          const cloudinaryUrls = await Promise.all(sourceUrls.map(async (sourceUrl: string, index: number) => {
-            const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(15000), mode: "cors" });
-            if (!response.ok) throw new Error("The source photograph could not be downloaded.");
-            const blob = await response.blob();
-            const file = new File([blob], "recovered-" + product.id + "-" + index + ".jpg", { type: blob.type || "image/jpeg" });
-            return compressProductImage(file);
-          }));
-
-          await updateStoreProduct(product.id, { images: cloudinaryUrls });
-          repaired += 1;
-        } catch (error) {
-          failures.push(product.name + ": " + (error instanceof Error ? error.message : "image recovery failed"));
-        } finally {
-          setMigrationProgress((progress) => ({ ...progress, done: progress.done + 1 }));
-        }
-      }
-
-      await fetchData();
-      if (repaired) {
-        toast.success("Recovered and saved Cloudinary photos for " + repaired + " products.");
-      } else {
-        toast.warning("No missing photos could be recovered from the old catalogue. " + unmatched + " products had no exact image match.");
-      }
-      if (failures.length) {
-        toast.error(failures.length + " products still need image attention: " + failures.slice(0, 2).join("; "));
-      }
-    } catch (error) {
-      console.error("Missing product image repair failed:", error);
-      toast.error(error instanceof Error ? error.message : "Could not repair missing product images.");
-    } finally {
-      setMigratingProducts(false);
     }
   };
 
@@ -699,14 +485,6 @@ const AdminDashboard = () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
                 </div>
-                <Button variant="outline" onClick={importSmartChoiceProducts} disabled={migratingProducts} className="rounded-xl">\n                  <Plus className="mr-2 w-4 h-4" /> Import Smart Choice + ₦5,000\n                </Button>\n                <Button variant="outline" onClick={repairMissingProductImages} disabled={migratingProducts} className="rounded-xl">
-                  <Image className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-pulse" : ""}`} />
-                  {migratingProducts ? "Checking images…" : "Repair Missing Images"}
-                </Button>
-                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
-                  <RefreshCw className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-spin" : ""}`} />
-                  {migratingProducts ? (migrationProgress.total ? "Migrating " + migrationProgress.done + "/" + migrationProgress.total : "Connecting to old catalogue...") : "Migrate Existing Products"}
-                </Button>
                 <Dialog open={showAddProduct} onOpenChange={setShowAddProduct}>
                   <DialogTrigger asChild>
                     <Button className="bg-gradient-gold text-accent-foreground rounded-xl shadow-gold">
