@@ -79,6 +79,33 @@ const uploadToCloudinary = async (file: File): Promise<string> => {
 // Kept under the existing export name so all admin upload flows use Cloudinary.
 export const compressProductImage = async (file: File): Promise<string> => uploadToCloudinary(file);
 
+// Import an existing product image from a public URL or data URI directly into this Cloudinary account.
+// Passing a remote URL to Cloudinary avoids browser CORS restrictions on the source image host.
+export const uploadProductImageSource = async (source: string): Promise<string> => {
+  if (!/^https?:\\/\\//i.test(source) && !/^data:image\\//i.test(source)) {
+    throw new Error("The source catalogue contains an unsupported image format.");
+  }
+
+  const cloudName = getCloudinaryCloudName();
+  const formData = new FormData();
+  formData.append("file", source);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", "somisteam/products");
+
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/image/upload`,
+    { method: "POST", body: formData },
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || typeof result.secure_url !== "string") {
+    const message = typeof result?.error?.message === "string"
+      ? result.error.message
+      : "Cloudinary could not import a source product photograph.";
+    throw new Error(message);
+  }
+  return result.secure_url;
+};
+
 const readImageValue = (value: unknown): string => {
   if (typeof value === "string") return value.trim();
   if (!value || typeof value !== "object") return "";
