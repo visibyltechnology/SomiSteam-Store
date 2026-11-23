@@ -1,17 +1,14 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
   where,
   writeBatch,
-  setDoc,
 } from "firebase/firestore";
 import { firestore } from "@/integrations/firebase/client";
 
@@ -95,13 +92,39 @@ const makeThumbnail = async (dataUrl: string): Promise<string> => {
   return thumbnail;
 };
 
-const normalizeProduct = (id: string, data: Record<string, unknown>, images: string[] = []): StoreProduct => {
-  const thumbnail = String(data.image || images[0] || "");
+const readImageValue = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  for (const key of ["dataUrl", "url", "imageUrl", "downloadURL", "downloadUrl", "src", "image", "base64"]) {
+    if (typeof record[key] === "string" && (record[key] as string).trim()) {
+      return (record[key] as string).trim();
+    }
+  }
+  return "";
+};
+
+const normalizeProduct = (id: string, data: Record<string, unknown>, imageRecords: string[] = []): StoreProduct => {
+  // Older SomiSteam records stored the full photo array directly on products.images.
+  // Newer records store full photos in productImages and keep a small products.image thumbnail.
+  const legacyImages = Array.isArray(data.images)
+    ? data.images.map(readImageValue).filter(Boolean)
+    : [];
+  const allImages = Array.from(new Set([...imageRecords, ...legacyImages]));
+  const fallbackImage = [
+    data.image,
+    data.imageUrl,
+    data.imageURL,
+    data.photoUrl,
+    data.thumbnail,
+  ].map(readImageValue).find(Boolean) || "";
+  const image = allImages[0] || fallbackImage;
+
   return {
     ...(data as Omit<StoreProduct, "id">),
     id,
-    image: thumbnail,
-    images: images.length ? images : (thumbnail ? [thumbnail] : []),
+    image,
+    images: allImages.length ? allImages : (image ? [image] : []),
     description: String(data.description || ""),
     features: Array.isArray(data.features) ? data.features as string[] : [],
     originalPrice: Number(data.originalPrice || data.price || 0),
@@ -114,42 +137,54 @@ const normalizeProduct = (id: string, data: Record<string, unknown>, images: str
   };
 };
 
+const timestampValue = (value: unknown): number => {
+  if (value && typeof value === "object" && "toMillis" in value && typeof (value as { toMillis?: unknown }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Date.parse(value) || 0;
+  return 0;
+};
+
 export const getStoreProducts = async (): Promise<StoreProduct[]> => {
   const [snapshot, imageSnapshot] = await Promise.all([
-    getDocs(query(productsCollection, orderBy("createdAt", "desc"))),
+    // Do not orderBy here: legacy product documents without createdAt must remain visible.
+    getDocs(productsCollection),
     getDocs(productImagesCollection),
   ]);
 
   const imagesByProduct = new Map<string, { position: number; dataUrl: string }[]>();
   imageSnapshot.docs.forEach((imageDoc) => {
     const data = imageDoc.data();
-    const productId = String(data.productId || "");
-    const dataUrl = String(data.dataUrl || "");
+    const productId = String(data.productId || data.product_id || "");
+    const dataUrl = readImageValue(data.dataUrl ?? data.imageData ?? data.imageUrl ?? data.url ?? data.image ?? data.src);
     if (!productId || !dataUrl) return;
     const existing = imagesByProduct.get(productId) || [];
     existing.push({ position: Number(data.position ?? 0), dataUrl });
     imagesByProduct.set(productId, existing);
   });
 
-  return snapshot.docs.map((item) => {
-    const images = (imagesByProduct.get(item.id) || [])
-      .sort((a, b) => a.position - b.position)
-      .map((entry) => entry.dataUrl);
-    return normalizeProduct(item.id, item.data(), images);
-  });
+  return snapshot.docs
+    .sort((a, b) => timestampValue(b.data().createdAt) - timestampValue(a.data().createdAt))
+    .map((item) => {
+      const images = (imagesByProduct.get(item.id) || [])
+        .sort((a, b) => a.position - b.position)
+        .map((entry) => entry.dataUrl);
+      return normalizeProduct(item.id, item.data(), images);
+    });
 };
 
 export const getStoreProduct = async (id: string): Promise<StoreProduct | null> => {
   const snapshot = await getDoc(doc(firestore, "products", id));
   if (!snapshot.exists()) return null;
-  // Sort locally so this lookup does not require a composite Firestore index.
   const imageSnapshot = await getDocs(query(
     productImagesCollection,
     where("productId", "==", id),
   ));
   const images = imageSnapshot.docs
     .sort((a, b) => Number(a.data().position ?? 0) - Number(b.data().position ?? 0))
-    .map((item) => String(item.data().dataUrl || ""))
+    .map((item) => readImageValue(item.data().dataUrl ?? item.data().imageData ?? item.data().imageUrl ?? item.data().url ?? item.data().image ?? item.data().src))
     .filter(Boolean);
   return normalizeProduct(snapshot.id, snapshot.data(), images);
 };
@@ -160,28 +195,28 @@ export const createStoreProduct = async (product: ProductInput): Promise<string>
   }
   const { images, ...metadata } = product;
   const thumbnail = images[0] ? await makeThumbnail(images[0]) : "";
-  const result = await addDoc(productsCollection, {
+  const productRef = doc(productsCollection);
+  const batch = writeBatch(firestore);
+
+  // Save product metadata and all original compressed photos atomically.
+  batch.set(productRef, {
     ...metadata,
     image: thumbnail,
     imageCount: images.length,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  images.forEach((dataUrl, position) => {
+    batch.set(doc(productImagesCollection, `${productRef.id}_${position}`), {
+      productId: productRef.id,
+      position,
+      dataUrl,
+      createdAt: serverTimestamp(),
+    });
+  });
 
-  try {
-    await Promise.all(images.map((dataUrl, position) =>
-      setDoc(doc(firestore, "productImages", `${result.id}_${position}`), {
-        productId: result.id,
-        position,
-        dataUrl,
-        createdAt: serverTimestamp(),
-      }),
-    ));
-  } catch (error) {
-    await deleteDoc(result);
-    throw error;
-  }
-  return result.id;
+  await batch.commit();
+  return productRef.id;
 };
 
 export const removeStoreProduct = async (id: string): Promise<void> => {
@@ -198,21 +233,30 @@ export const updateStoreProduct = async (id: string, updates: Partial<ProductInp
     ...metadata,
     updatedAt: serverTimestamp(),
   };
-  if (images) {
+  const productRef = doc(firestore, "products", id);
+
+  if (images !== undefined) {
+    if (images.length > 4) throw new Error("You can add up to 4 images per product.");
     productUpdates.image = images[0] ? await makeThumbnail(images[0]) : "";
     productUpdates.imageCount = images.length;
+    // Remove the legacy inline array only when the administrator explicitly replaces photos.
+    productUpdates.images = deleteField();
+
     const previous = await getDocs(query(productImagesCollection, where("productId", "==", id)));
     const batch = writeBatch(firestore);
     previous.docs.forEach((imageDoc) => batch.delete(imageDoc.ref));
     images.forEach((dataUrl, position) => {
-      batch.set(doc(firestore, "productImages", `${id}_${position}`), {
+      batch.set(doc(productImagesCollection, `${id}_${position}`), {
         productId: id,
         position,
         dataUrl,
         createdAt: serverTimestamp(),
       });
     });
+    batch.update(productRef, productUpdates);
     await batch.commit();
+    return;
   }
-  await updateDoc(doc(firestore, "products", id), productUpdates);
+
+  await updateDoc(productRef, productUpdates);
 };
