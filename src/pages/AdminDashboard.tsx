@@ -339,6 +339,93 @@ const AdminDashboard = () => {
     }
   };
 
+  const repairMissingProductImages = async () => {
+    if (!firebaseAuth.currentUser) {
+      toast.error("Sign in with the Firebase admin account first.");
+      return;
+    }
+
+    setMigratingProducts(true);
+    try {
+      toast.info("Checking the old catalogue for the missing product photographs…");
+      const [currentProducts, legacyResult] = await Promise.all([
+        getStoreProducts(),
+        supabase.from("products").select("*").abortSignal(AbortSignal.timeout(15000)),
+      ]);
+      if (legacyResult.error) throw legacyResult.error;
+
+      const normalizeName = (value: unknown) =>
+        String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const legacyByName = new Map<string, any>();
+      for (const item of legacyResult.data || []) {
+        const key = normalizeName(item.name);
+        if (key && !legacyByName.has(key)) legacyByName.set(key, item);
+      }
+
+      const missing = currentProducts.filter((item) => !(item.images || []).some((url) => typeof url === "string" && url.trim()));
+      setMigrationProgress({ done: 0, total: missing.length });
+      let repaired = 0;
+      const failures: string[] = [];
+      let unmatched = 0;
+
+      for (const product of missing) {
+        try {
+          const source = legacyByName.get(normalizeName(product.name));
+          if (!source) {
+            unmatched += 1;
+            continue;
+          }
+
+          const rawImages = Array.isArray(source.images)
+            ? source.images
+            : [source.image, source.image_url, source.imageUrl].filter(Boolean);
+          const sourceUrls = rawImages.map((value: unknown) => {
+            if (typeof value === "string") return value.trim();
+            if (!value || typeof value !== "object") return "";
+            const record = value as Record<string, unknown>;
+            return [record.secure_url, record.url, record.imageUrl, record.src]
+              .find((entry) => typeof entry === "string" && entry.trim()) as string || "";
+          }).filter((url: string) => /^https?:\/\//i.test(url)).slice(0, 4);
+
+          if (!sourceUrls.length) {
+            unmatched += 1;
+            continue;
+          }
+
+          const cloudinaryUrls = await Promise.all(sourceUrls.map(async (sourceUrl: string, index: number) => {
+            const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(15000), mode: "cors" });
+            if (!response.ok) throw new Error("The source photograph could not be downloaded.");
+            const blob = await response.blob();
+            const file = new File([blob], "recovered-" + product.id + "-" + index + ".jpg", { type: blob.type || "image/jpeg" });
+            return compressProductImage(file);
+          }));
+
+          await updateStoreProduct(product.id, { images: cloudinaryUrls });
+          repaired += 1;
+        } catch (error) {
+          failures.push(product.name + ": " + (error instanceof Error ? error.message : "image recovery failed"));
+        } finally {
+          setMigrationProgress((progress) => ({ ...progress, done: progress.done + 1 }));
+        }
+      }
+
+      await fetchData();
+      if (repaired) {
+        toast.success("Recovered and saved Cloudinary photos for " + repaired + " products.");
+      } else {
+        toast.warning("No missing photos could be recovered from the old catalogue. " + unmatched + " products had no exact image match.");
+      }
+      if (failures.length) {
+        toast.error(failures.length + " products still need image attention: " + failures.slice(0, 2).join("; "));
+      }
+    } catch (error) {
+      console.error("Missing product image repair failed:", error);
+      toast.error(error instanceof Error ? error.message : "Could not repair missing product images.");
+    } finally {
+      setMigratingProducts(false);
+    }
+  };
+
   const openProductEditor = async (product: DBProduct) => {
     try {
       const full = await getStoreProduct(product.id);
@@ -612,7 +699,11 @@ const AdminDashboard = () => {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 rounded-xl" />
                 </div>
-                <Button variant="outline" onClick={importSmartChoiceProducts} disabled={migratingProducts} className="rounded-xl">\n                  <Plus className="mr-2 w-4 h-4" /> Import Smart Choice + ₦5,000\n                </Button>\n                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
+                <Button variant="outline" onClick={importSmartChoiceProducts} disabled={migratingProducts} className="rounded-xl">\n                  <Plus className="mr-2 w-4 h-4" /> Import Smart Choice + ₦5,000\n                </Button>\n                <Button variant="outline" onClick={repairMissingProductImages} disabled={migratingProducts} className="rounded-xl">
+                  <Image className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-pulse" : ""}`} />
+                  {migratingProducts ? "Checking images…" : "Repair Missing Images"}
+                </Button>
+                <Button variant="outline" onClick={migrateLegacyProducts} disabled={migratingProducts} className="rounded-xl">
                   <RefreshCw className={`mr-2 w-4 h-4 ${migratingProducts ? "animate-spin" : ""}`} />
                   {migratingProducts ? (migrationProgress.total ? "Migrating " + migrationProgress.done + "/" + migrationProgress.total : "Connecting to old catalogue...") : "Migrate Existing Products"}
                 </Button>
