@@ -52,7 +52,7 @@ import { useStoreProducts } from "@/hooks/useStoreProducts";
       if (sortKey === "price_desc") return [...list].sort((a, b) => b.price - a.price);
       if (sortKey === "discount") return [...list].sort((a, b) => b.discount - a.discount);
       return list;
-    }, [query, activeCategory, activeBrand, priceRange, sortKey]);
+    }, [products, query, activeCategory, activeBrand, priceRange, sortKey]);
 
     const clearFilters = () => {
       setQuery("");
