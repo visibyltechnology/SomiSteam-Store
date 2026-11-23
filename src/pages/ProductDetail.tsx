@@ -24,6 +24,7 @@ const ProductDetail = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [product, setProduct] = useState<StoreProduct | null>(null);
+  const [selectedImage, setSelectedImage] = useState("");
   const [loadingProduct, setLoadingProduct] = useState(true);
   const [depositAmount, setDepositAmount] = useState(0);
 
@@ -37,6 +38,7 @@ const ProductDetail = () => {
       .then((item) => {
         if (active) {
           setProduct(item);
+          setSelectedImage(item?.images?.[0] || item?.image || "");
           if (item) setDepositAmount(item.minDeposit);
         }
       })
@@ -68,6 +70,8 @@ const ProductDetail = () => {
   }
 
   const installment = calculateInstallment(product.price, depositAmount);
+  const productImages = Array.from(new Set([...(product.images || []), product.image].filter((url): url is string => typeof url === "string" && url.trim().length > 0)));
+  const activeImage = productImages.includes(selectedImage) ? selectedImage : productImages[0] || "";
 
   const handlePayment = async (type: "full_payment" | "deposit") => {
     if (!user) {
@@ -132,19 +136,46 @@ const ProductDetail = () => {
           </Link>
 
           <div className="grid lg:grid-cols-2 gap-12">
-            {/* Image */}
+            {/* Product image gallery: migrated Cloudinary images and all additional views */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-secondary/50 rounded-3xl p-8 lg:p-12 aspect-square flex items-center justify-center"
+              className="space-y-3 min-w-0"
             >
-              <img
-                src={product.image}
-                alt={product.name}
-                className="max-w-full max-h-full object-contain"
-                width={800}
-                height={800}
-              />
+              <div className="bg-secondary/50 rounded-3xl p-5 sm:p-8 aspect-square flex items-center justify-center overflow-hidden">
+                {activeImage ? (
+                  <img
+                    key={activeImage}
+                    src={activeImage}
+                    alt={product.name}
+                    className="w-full h-full max-w-full max-h-full object-contain"
+                    width={800}
+                    height={800}
+                    onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+                  />
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Product image coming soon</p>
+                  </div>
+                )}
+              </div>
+              {productImages.length > 1 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {productImages.map((imageUrl, index) => (
+                    <button
+                      key={imageUrl}
+                      type="button"
+                      onClick={() => setSelectedImage(imageUrl)}
+                      aria-label={`View product image ${index + 1}`}
+                      aria-pressed={activeImage === imageUrl}
+                      className={`aspect-square rounded-xl overflow-hidden bg-secondary border-2 p-1 transition-colors ${activeImage === imageUrl ? "border-accent" : "border-transparent"}`}
+                    >
+                      <img src={imageUrl} alt={`${product.name} view ${index + 1}`} className="w-full h-full object-contain" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              )}
             </motion.div>
 
             {/* Details */}
